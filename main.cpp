@@ -1,4 +1,6 @@
 #include <igraph.h>
+#include "influence_oracles.cpp"
+#include <vector>
 
 int main(void)
 {
@@ -10,6 +12,11 @@ int main(void)
   igraph_diameter(&graph, &diameter, 0, 0, 0, IGRAPH_UNDIRECTED, 1);
   printf("Diameter of a random graph with average degree 5: %d\n",
 	 (int) diameter);
+
+  vector< igraph_t* > in_inst(2, &graph);
+
+  influence_oracles my_oracles( in_inst, 2, 2 );
+
   igraph_destroy(&graph);
   return 0;
 }
