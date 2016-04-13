@@ -33,6 +33,53 @@ public:
   influence_oracles( vector< igraph_t* > in_instances, myint in_ell, myint in_k ) :
     v_instances( in_instances ), ell( in_ell ), k( in_k ) { }
 
+private:
+
+  void update_local_sketches( igraph_t* G_i, 
+			      mypair root, 
+			      vector< vector< myint > >& local_sketches ) {
+    //root is a pair, first element is rank,
+    //second is vertex
+
+    //want to insert the rank of root to sketches of backwards reachable nodes
+    //BFS backwards
+    queue <myint> Q;
+    vector < int > dist;
+    dist.reserve( n );
+    for (myint i = 0; i < n; ++i) {
+      dist[i] = -1; //infinity
+
+    }
+
+    dist[ root.second ] = 0;
+    Q.push( root.second );
+    while (!(Q.empty)) {
+
+      myint current = Q.pop();
+      //get backwards neighbors of current
+      igraph_vector_t neis;
+      igraph_vector_init( &neis, 0 );
+      igraph_neighbors( G_i, &neis, current, IGRAPH_IN );
+      for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
+	myint aneigh = VECTOR( neis )[i];
+	if (dist[ aneigh ] == -1 ) {
+	  dist[ aneigh ] = dist[ current ] + 1;
+	  Q.push( aneigh );
+	  //update the local sketch of 'aneigh'
+	  //with the rank of the root
+	  //since we look at ranks in increasing order,
+	  //pushing onto the end will maintain the
+	  //property that the sketches are sorted
+	  if ( local_sketches[ aneigh ].size() < k ) {
+	    local_sketches[ aneigh ].push( root.first );
+	  }
+	}
+      }
+      igraph_vector_destroy( &neis );
+    } //BFS finished
+
+  }
+
 };
 
 void influence_oracles::compute_oracles() {
@@ -64,15 +111,42 @@ void influence_oracles::compute_oracles() {
 
   // compute combined bottom-k rank sketches
   
-  // for each instance i
+  // for each instance i, compute local bottom-k sketches
+  vector < vector< myint > > local_sketches;
+  vector < myint > empty_sketch;
   for (myint i = 0; i < ell; ++i) {
-    // for each vertex u in i by increasing rank
+    local_sketches.clear();
+    local_sketches.assign( n, empty_sketch )
+      
+    // for each vertex in instance i by increasing rank
     for (myint j = 0; j < n; ++j) {
-      myint vertex = instanceRanks[i].second;
-      // Run BFS in instance i from u until sketch is of
-  // size k, or BFS ends
+      myint vertex = instanceRanks[i][j].second;
+      // Run reverse BFS in instance i from 'vertex', 
+      // updating sketches of discovered vertices
+      update_local_sketches( v_instances[ i ],
+			     instanceRanks[i][j],
+			     local_sketches );
+    }
 
-  // merge the reachability sketch in instance i
-  // into the global sketch. 
+    // merge local_sketches in instance i
+    // into the global sketch for each node
+    vector< myint > new_sketch;
+    for (myint u = 0; u < n; ++u) {
+      unsigned global_index = 0;
+      unsigned local_index = 0;
+      new_sketch.clear();
+      for (unsigned j = 0; j < k; ++j) {
+	if ( local_sketches[u][ local_index ] 
+	     < global_sketches[u][ global_index ] ) {
+	  new_sketch.push_back( 
+	}
+      }
+
+
+    }
+  }
+
 
 }
+
+
