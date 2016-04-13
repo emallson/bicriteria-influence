@@ -13,7 +13,7 @@ int main(void)
 
   vector< igraph_t* > in_inst(2, &graph);
 
-  influence_oracles my_oracles( in_inst, (myint) 2, (myint) 2 );
+  influence_oracles my_oracles( in_inst, (myint) 2, (myint) 2, igraph_vcount( &graph ) );
 
   igraph_t* g_pointer = (my_oracles.v_instances)[0];
 
