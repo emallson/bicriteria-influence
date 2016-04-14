@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <queue>
+#include <iostream>
 
 using namespace std;
 typedef unsigned long myint;
@@ -26,7 +27,38 @@ public:
 
   void compute_oracles();
   
-  void estimate_influence() {}
+  double estimate_reachability( myint vertex ) {
+    double uniform_rank;
+    double estimate;
+    if (global_sketches[ vertex ].size() == k) {
+      myint T = global_sketches[ vertex ].back();
+      uniform_rank = ((double) T - 1.0)/(ell * n - 1.0 );
+      estimate = ((double) k - 1)/ uniform_rank;
+    }
+    else {
+      estimate = ((double) global_sketches[vertex].size());
+    }
+      
+
+
+
+
+    
+    //double estimate = 1.0 + 
+    //      ((double)(k - 1)*(n*ell - 1)) / (T - 1);
+
+    return estimate / ell;
+  }
+
+  double average_reachability( myint vertex ) {
+    myint tot_reach = 0;
+    for (myint i = 0; i < ell; ++i) {
+      tot_reach += forwardBFS( v_instances[i], vertex );
+
+    }
+
+    return ((double) tot_reach) / ell;
+  }
 
   void merge_sketches(vector< myint >& sketch_1, vector< myint >& sketch_2, 
 		      vector< myint >& result ) {}
@@ -42,6 +74,49 @@ public:
   { }
 
 private:
+
+  myint forwardBFS( igraph_t* G_i, myint vertex ) {
+
+    queue <myint> Q;
+    vector < int > dist;
+    dist.reserve( n );
+    for (myint i = 0; i < n; ++i) {
+      dist[i] = -1; //infinity
+    }
+
+    dist[ vertex ] = 0;
+    Q.push( vertex );
+    while (!(Q.empty())) {
+
+      myint current = Q.front();
+      Q.pop();
+      //get forwards neighbors of current
+      igraph_vector_t neis;
+      igraph_vector_init( &neis, 0 );
+      igraph_neighbors( G_i, &neis, current, IGRAPH_OUT );
+      for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
+	myint aneigh = VECTOR( neis )[i];
+	if (dist[ aneigh ] == -1 ) {
+	  dist[ aneigh ] = dist[ current ] + 1;
+	  Q.push( aneigh );
+
+	}
+      }
+
+      igraph_vector_destroy( &neis );
+    } //BFS finished
+
+    myint count = 0;
+    for (myint i = 0; i < n; ++i) {
+      if (dist[i] != -1) {
+	//i is reachable from vertex in G_i
+	++count;
+      }
+    }
+
+    return count;
+
+  }
 
   void update_local_sketches( igraph_t* G_i, 
 			      mypair root, 
@@ -108,9 +183,13 @@ void influence_oracles::compute_oracles() {
 
   random_shuffle( perm.begin(), perm.end() );
 
+
+
   // group ranks by instance
   // the pairs are in order of rank
-  vector< vector < mypair > > instanceRanks;
+  vector< mypair > emptyInstance;
+  vector< vector < mypair > > instanceRanks( ell, emptyInstance );
+
   for (myint r = 1; r <= K; ++r ) {
     myint i = perm[ r - 1 ].second;
     mypair tmp;
@@ -127,6 +206,7 @@ void influence_oracles::compute_oracles() {
   global_sketches.assign( n, empty_sketch );
 
   for (myint i = 0; i < ell; ++i) {
+    cerr << i << endl;
     local_sketches.clear();
     local_sketches.assign( n, empty_sketch );
       

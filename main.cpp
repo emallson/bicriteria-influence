@@ -1,26 +1,34 @@
 #include <igraph.h>
 #include "influence_oracles.cpp"
 #include <vector>
+#include <iostream>
+
+using namespace std;
 
 int main(void)
 {
   igraph_integer_t diameter;
   igraph_t graph;
   igraph_rng_seed(igraph_rng_default(), 42);
-  igraph_erdos_renyi_game(&graph, IGRAPH_ERDOS_RENYI_GNP, 1000, 5.0/1000,
+  igraph_erdos_renyi_game(&graph, IGRAPH_ERDOS_RENYI_GNP, 1000, 2.0/1000,
 			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
 
 
-  vector< igraph_t* > in_inst(2, &graph);
+  vector< igraph_t* > in_inst(10, &graph);
 
-  influence_oracles my_oracles( in_inst, (myint) 2, (myint) 2, igraph_vcount( &graph ) );
+  influence_oracles my_oracles( in_inst, (myint) 10, (myint) 10, igraph_vcount( &graph ) );
 
-  igraph_t* g_pointer = (my_oracles.v_instances)[0];
+  cerr << "computing oracles...\n";
 
-  igraph_diameter( g_pointer, &diameter, 0, 0, 0, IGRAPH_UNDIRECTED, 1);
+  my_oracles.compute_oracles();
 
-  printf("Diameter of a random graph with average degree 5: %d\n",
-	 (int) diameter);
+  cerr << "done" << endl;
+
+  cout << "avg reachability and estimates: ";
+
+  for (myint i = 0; i < igraph_vcount( &graph ); ++i) {
+    cout << my_oracles.average_reachability( 1 ) << ' ' << my_oracles.estimate_reachability( 1 ) << endl;
+  }
 
   igraph_destroy(&graph);
   return 0;
