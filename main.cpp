@@ -10,13 +10,16 @@ int main(void)
   igraph_integer_t diameter;
   igraph_t graph;
   igraph_rng_seed(igraph_rng_default(), 42);
-  igraph_erdos_renyi_game(&graph, IGRAPH_ERDOS_RENYI_GNP, 1000, 2.0/1000,
+  myint ell = 10;
+  myint n = 1000;
+  vector < igraph_t > vgraphs( ell, graph );
+
+  for (myint i = 0; i < ell; ++i) {
+    igraph_erdos_renyi_game(&(vgraphs[i]), IGRAPH_ERDOS_RENYI_GNP, n, 1.0/1000,
 			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+  }
 
-
-  vector< igraph_t* > in_inst(10, &graph);
-
-  influence_oracles my_oracles( in_inst, (myint) 10, (myint) 10, igraph_vcount( &graph ) );
+  influence_oracles my_oracles( vgraphs, ell, (myint) 10, n );
 
   cerr << "computing oracles...\n";
 
@@ -25,11 +28,9 @@ int main(void)
   cerr << "done" << endl;
 
   cout << "avg reachability and estimates: ";
-
-  for (myint i = 0; i < igraph_vcount( &graph ); ++i) {
-    cout << my_oracles.average_reachability( 1 ) << ' ' << my_oracles.estimate_reachability( 1 ) << endl;
+  for (myint i = 0; i < n; ++i) {
+    cout << i << ' ' << my_oracles.average_reachability( i ) << ' ' << my_oracles.estimate_reachability( i ) << endl;
   }
 
-  igraph_destroy(&graph);
   return 0;
 }

@@ -63,7 +63,7 @@ public:
   void merge_sketches(vector< myint >& sketch_1, vector< myint >& sketch_2, 
 		      vector< myint >& result ) {}
 
-  influence_oracles( vector< igraph_t* > in_instances,
+  influence_oracles( vector< igraph_t* >& in_instances,
                      myint in_ell, 
                      myint in_k,
                      myint in_n) :
@@ -72,6 +72,23 @@ public:
     k( in_k ),
     n( in_n )
   { }
+
+  influence_oracles( vector< igraph_t >& in_instances,
+                     myint in_ell, 
+                     myint in_k,
+                     myint in_n) :
+    ell( in_ell ), 
+    k( in_k ),
+    n( in_n )
+  { 
+    igraph_t* nullpoint;
+    v_instances.assign( ell, nullpoint);
+
+    for (myint i = 0; i < ell; ++i) {
+      v_instances[i] = &(in_instances[i]);
+
+    }
+  }
 
 private:
 
