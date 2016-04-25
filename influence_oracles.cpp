@@ -26,7 +26,6 @@ public:
   vector< vector< myint > > global_sketches;
 
   void compute_oracles();
-  
   double estimate_reachability( myint vertex ) {
     double uniform_rank;
     double estimate;

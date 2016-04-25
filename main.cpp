@@ -35,7 +35,7 @@ myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_nei
 int main(int argc, char** argv) {
   if (argc < 2) {
 
-    cerr << "Usage: " << argv[0] << " <base graph filename>";
+    cerr << "Usage: " << argv[0] << " <base graph filename>\n";
     return 1;
   }
   
@@ -43,27 +43,32 @@ int main(int argc, char** argv) {
 
   //  ifstream ifile( bg_filename.c_str());
 
-  FILE* fp;
-  fp = fopen( argv[1], "r" );
+  //  FILE* fp;
+  //  fp = fopen( argv[1], "r" );
 
   igraph_t base_graph;
-  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
+  //  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
+  myint n = 50000;
+  igraph_erdos_renyi_game(&base_graph, IGRAPH_ERDOS_RENYI_GNP, n, 1.0/ n,
+			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+  //  fclose( fp );
 
-  fclose( fp );
-
+  cerr << "Constructing the IC model...\n";
   vector< double > IC_weights;
-
   construct_independent_cascade( base_graph, IC_weights );
 
   vector< double> node_probs;
 
   //this is a simple model of external influence
+  cerr << "Constructing external influence...\n";
   construct_external_influence( base_graph, node_probs );
 
   //create the set of graphs for the alg.
+  cerr << "Constructing the gen. reach. instance...\n";
+
   myint ell = 10;
   myint k_cohen = ell;
-  myint n = igraph_vcount( &base_graph );
+
   vector< igraph_t* > v_graphs; // the ell graphs
   construct_reachability_instance( base_graph, 
 				   v_graphs, 
@@ -98,6 +103,13 @@ void construct_reachability_instance( igraph_t& G,
 
   myint n = igraph_vcount( &G );
   for (myint i = 0; i < ell; ++i) {
+    if (i % 1 == 0) {
+      cerr << "\r                                     \r"
+	   << ((double) i )/ ell * 100 
+	//	   << i
+	   << "\% done";
+    }
+
     igraph_t G_i; //want a new address in memory each iteration
 
     sample_independent_cascade( G, IC, G_i );
@@ -106,21 +118,37 @@ void construct_reachability_instance( igraph_t& G,
     vector< myint > ext_act;
     //need to initialize ext_act
     sample_external_influence( G, NP, ext_act );
-    
-
     //remove the reachable set in G_i, of the externally activated set.
     //actually, what we want is to remove all edges incident to reachable
     //set.
     vector< myint > v_reach;
-    forwardBFS( &G_i, ext_act, v_reach );
+
+    igraph_vector_t v_edges_to_remove;
+    igraph_vector_init( &v_edges_to_remove, 0 );
+    igraph_vector_t v_tmp;
+    igraph_vector_init( &v_tmp, 0 );
+
+    cerr << "\n" << forwardBFS( &G_i, ext_act, v_reach ) << ' ';
+
     for (myint i = 0; i < v_reach.size(); ++i) {
-      igraph_es_t es; //vertex selector for the reachable set to remove
-      igraph_es_incident( &es, v_reach[i], IGRAPH_ALL );
-      igraph_delete_edges( &G_i, es );
-      igraph_es_destroy( &es );
+
+      igraph_incident( &G_i, &v_tmp, v_reach[i], IGRAPH_ALL );
+
+      igraph_vector_append( &v_edges_to_remove, &v_tmp );
 
     }
 
+    cerr << igraph_vector_size( &v_edges_to_remove ) << "\n";
+
+    igraph_vector_destroy(&v_tmp);
+
+    igraph_es_t es; //vertex selector for the reachable set to remove
+    igraph_es_vector( &es, &v_edges_to_remove );
+    igraph_delete_edges( &G_i, es );
+    igraph_es_destroy( &es );
+    igraph_vector_destroy( &v_edges_to_remove );
+
+    cerr << "BFS done\n";
     //All edges incident to the reachable set have been removed
     //That is, H_i has been created
     vgraphs.push_back( &G_i );
@@ -180,7 +208,7 @@ void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights 
 void construct_external_influence( igraph_t& G, vector< double >& node_probs ) {
   node_probs.clear();
 
-  std::uniform_real_distribution<> dis(0, 1);
+  std::uniform_real_distribution<> dis(0, 0.1);
 
   myint n = igraph_vcount( &G );
 
@@ -258,6 +286,9 @@ myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_nei
     dist.push_back( -1 ); //infinity
   }
 
+  //  igraph_vector_t v_edges_to_remove;
+  //  igraph_vector_init( &v_edges_to_remove, 0);
+
   for (myint i = 0; i < vseeds.size(); ++i) {
     dist[ vseeds[i] ] = 0;
     Q.push( vseeds[i] );
@@ -275,11 +306,15 @@ myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_nei
     igraph_neighbors( G_i, &neis, current, IGRAPH_OUT );
     for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
       myint aneigh = VECTOR( neis )[i];
-      if (dist[ aneigh ] == -1 ) {
+      if (dist[ aneigh ] == -1 ) { //if aneigh hasn't been discovered yet
 	dist[ aneigh ] = dist[ current ] + 1;
 	Q.push( aneigh );
 	//	igraph_vector_push_back( &v_neighborhood, aneigh );
 	v_neighborhood.push_back( aneigh );
+
+	//flag this edge for removal from the graph
+	//	myint eid;
+	//	igraph_get_eid( G_i, &eid, current, 
       }
     }
 
