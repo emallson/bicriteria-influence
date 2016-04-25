@@ -12,6 +12,25 @@ using namespace std;
 std::random_device rd;
 std::mt19937 gen(rd());
 
+//function prototypes
+void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights );
+void construct_external_influence( igraph_t& G, vector< double >& node_probs );
+void construct_reachability_instance( igraph_t& G, 
+				      vector< igraph_t* >& vgraphs,
+				      vector< double >& IC, //IC weights
+				      vector< double >& NP, //Node probabilities
+				      myint ell );
+void sample_independent_cascade( igraph_t& G, 
+				 vector< double >& edge_weights, 
+				 igraph_t& sample_graph );
+
+void sample_external_influence( igraph_t& G, 
+				vector< double >& node_probs, 
+				vector< myint >& nodes_sampled );
+
+myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood );
+
+
 
 int main(int argc, char** argv) {
   if (argc < 2) {
@@ -30,6 +49,8 @@ int main(int argc, char** argv) {
   igraph_t base_graph;
   igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
 
+  fclose( fp );
+
   vector< double > IC_weights;
 
   construct_independent_cascade( base_graph, IC_weights );
@@ -39,38 +60,75 @@ int main(int argc, char** argv) {
   //this is a simple model of external influence
   construct_external_influence( base_graph, node_probs );
 
+  //create the set of graphs for the alg.
+  myint ell = 10;
+  myint k_cohen = ell;
+  myint n = igraph_vcount( &base_graph );
+  vector< igraph_t* > v_graphs; // the ell graphs
+  construct_reachability_instance( base_graph, 
+				   v_graphs, 
+				   IC_weights,
+				   node_probs,
+				   ell );
+
+  //create the oracles
+  influence_oracles my_oracles( v_graphs, ell, k_cohen, n );
   
-  
-  fclose( fp );
+  cerr << "computing oracles...\n";
+
+  my_oracles.compute_oracles();
+
+  cerr << "done" << endl;
+
+  cout << "avg reachability and estimates: ";
+  for (myint i = 0; i < n; ++i) {
+    cout << i << ' ' << my_oracles.average_reachability( i ) << ' ' << my_oracles.estimate_reachability( i ) << endl;
+  }
+
   return 0;
 }
 
 void construct_reachability_instance( igraph_t& G, 
-				      vector< igraph_t >& vgraphs,
+				      vector< igraph_t* >& vgraphs,
+				      vector< double >& IC, //IC weights
+				      vector< double >& NP, //Node probabilities
 				      myint ell ) {
   //create a gen. reachability instance
-  igraph_t G_i;
+  vgraphs.clear();
+
   myint n = igraph_vcount( &G );
   for (myint i = 0; i < ell; ++i) {
-    //    igraph_copy( &G_i, &G );
+    igraph_t G_i; //want a new address in memory each iteration
+
     sample_independent_cascade( G, IC, G_i );
     //G_i now has an IC instance. Let's select the
     //externally activated nodes
-    igraph_vector_t ext_act;
+    vector< myint > ext_act;
     //need to initialize ext_act
     sample_external_influence( G, NP, ext_act );
     
 
     //remove the reachable set in G_i, of the externally activated set.
-    igraph_vs_t vids; //vertex selector for the seeds
-    igraph_vs_vector( &vids, &ext_act );
-    //this function only does neighborhood of the individual vertices,
-    //not the set. //better to just implement a BFS
-    igraph_neighborhood( &G, &res, vids, n, IGRAPH_OUT );
+    //actually, what we want is to remove all edges incident to reachable
+    //set.
+    vector< myint > v_reach;
+    forwardBFS( &G_i, ext_act, v_reach );
+    for (myint i = 0; i < v_reach.size(); ++i) {
+      igraph_es_t es; //vertex selector for the reachable set to remove
+      igraph_es_incident( &es, v_reach[i], IGRAPH_ALL );
+      igraph_delete_edges( &G_i, es );
+      igraph_es_destroy( &es );
 
+    }
+
+    //All edges incident to the reachable set have been removed
+    //That is, H_i has been created
+    vgraphs.push_back( &G_i );
   }
 
 }
+
+
 
 
 
@@ -109,8 +167,7 @@ int test_estimation()
 void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights ) {
   edge_weights.clear();
 
-  std::random_device rd;
-
+  std::uniform_real_distribution<> dis(0, 1);
 
   myint m = igraph_ecount( &G );
 
@@ -167,7 +224,9 @@ void sample_independent_cascade( igraph_t& G, vector< double >& edge_weights, ig
   
 }
 
-void sample_external_influence( igraph_t& G, vector< double >& node_probs, igraph_vector_t& nodes_sampled ) {
+void sample_external_influence( igraph_t& G, 
+				vector< double >& node_probs, 
+				vector< myint >& nodes_sampled ) {
   
 
   std::uniform_real_distribution<> dis(0, 1);
@@ -176,16 +235,65 @@ void sample_external_influence( igraph_t& G, vector< double >& node_probs, igrap
 
   double cvalue;
 
-  igraph_vector_reserve( &nodes_sampled, n );
+  nodes_sampled.clear();
 
   for (myint i = 0; i < n; ++i ) {
     //toss a coin
     cvalue = dis(gen);
     if (cvalue < node_probs[i]) {
       //sample this node i
-      igraph_vector_push_back( &nodes_sampled, i );
+      //igraph_vector_push_back( &nodes_sampled, i );
+      nodes_sampled.push_back( i );
     } 
   }
 
 }
 
+myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood ) {
+  queue <myint> Q;
+  vector < int > dist;
+  myint n = igraph_vcount( G_i );
+  dist.reserve( n );
+  for (myint i = 0; i < n; ++i) {
+    dist.push_back( -1 ); //infinity
+  }
+
+  for (myint i = 0; i < vseeds.size(); ++i) {
+    dist[ vseeds[i] ] = 0;
+    Q.push( vseeds[i] );
+    //    igraph_vector_push_back( &v_neighborhood, vseeds[i] );
+    v_neighborhood.push_back( vseeds[i] );
+  }
+
+  while (!(Q.empty())) {
+
+    myint current = Q.front();
+    Q.pop();
+    //get forwards neighbors of current
+    igraph_vector_t neis;
+    igraph_vector_init( &neis, 0 );
+    igraph_neighbors( G_i, &neis, current, IGRAPH_OUT );
+    for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
+      myint aneigh = VECTOR( neis )[i];
+      if (dist[ aneigh ] == -1 ) {
+	dist[ aneigh ] = dist[ current ] + 1;
+	Q.push( aneigh );
+	//	igraph_vector_push_back( &v_neighborhood, aneigh );
+	v_neighborhood.push_back( aneigh );
+      }
+    }
+
+    igraph_vector_destroy( &neis );
+  } //BFS finished
+
+  myint count = 0;
+  for (myint i = 0; i < n; ++i) {
+    if (dist[i] != -1) {
+      //i is reachable from vertex in G_i
+      ++count;
+    }
+  }
+
+  return count;
+
+}

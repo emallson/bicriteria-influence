@@ -7,7 +7,7 @@
 #include <iostream>
 
 using namespace std;
-typedef unsigned long myint;
+typedef igraph_integer_t myint;
 typedef unordered_set< myint >  uset;
 
 struct mypair {
@@ -98,7 +98,7 @@ private:
     vector < int > dist;
     dist.reserve( n );
     for (myint i = 0; i < n; ++i) {
-      dist[i] = -1; //infinity
+      dist.push_back( -1 ); //infinity
     }
 
     dist[ vertex ] = 0;
