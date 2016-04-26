@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
   igraph_t base_graph;
   //  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
-  myint n = 50000;
+  myint n = 10000;
   igraph_erdos_renyi_game(&base_graph, IGRAPH_ERDOS_RENYI_GNP, n, 1.0/ n,
 			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
   //  fclose( fp );
@@ -76,6 +76,10 @@ int main(int argc, char** argv) {
 				   node_probs,
 				   ell );
 
+  for (myint i = 0; i < ell; ++i) {
+    cerr << igraph_vcount( v_graphs[i] ) << endl;
+  }
+
   //create the oracles
   influence_oracles my_oracles( v_graphs, ell, k_cohen, n );
   
@@ -93,6 +97,78 @@ int main(int argc, char** argv) {
   return 0;
 }
 
+void bicriteria( infuence_oracles& oracles, myint n, double alpha ) {
+  vector< myint > sketch;
+
+  double est_infl = 0.0;
+  double marginal_gain = 0.0;
+  myint next_node = 0;
+
+  vector< myint > tmp_sketch;
+  vector< myint > seeds;
+  while (est_infl < alpha * n ) {
+    //select the node with the max. marginal gain
+    //for each u
+    double max_marg = 0;
+    double curr_tau = oracles.estimate_reachability_sketch( sketch );
+    for (myint u = 0; u < n; ++u) {
+      //tmp_sketch = merge( sketch, sketch_u )
+      my_merge( sketch, oracles.global_sketches[ u ], tmp_sketch, k );
+      
+
+      //estimate size based on tmp_sketch
+      double tmp_marg = oracles.estimate_reachability_sketch( tmp_sketch ) - curr_tau;
+      if (tmp_marg > max_marg) {
+	max_marg = tmp_marg;
+	next_node = u;
+      }
+    }
+    //pick the max. one, update sketch
+    my_merge( sketch, oracles.global_sketches[ next_node ], tmp_sketch, k );
+    sketch.swap( tmp_sketch );
+    seeds.push_back( next_node );
+
+    est_infl = beta + curr_tau + max_marg;
+  }
+
+
+}
+
+void my_merge( vector< myint >& sk1, vector< myint >& sk2,
+	       vector< myint >& res_sk, k ) {
+  //	       , vector< myint >& seeds ) {
+
+  vector< myint >::iterator it1 = sk1.begin();
+  vector< myint >::iterator it2 = sk2.begin();
+
+  myint l = k;
+  if (l > (sk1.size() + sk2.size())) {
+    l = sk1.size() + sk2.size();
+  }
+
+  res_sk.assign( l, 0 );
+  vector< myint >::iterator res_it = res_sk.begin();
+
+  myint s = 0; //size
+
+  while (s < l) {
+    //add the smallest next one
+    if ( (*it1) < (*it2) ) {
+      (*res_it) = (*it1);
+      ++it1;
+    } else {
+      (*res_it) = (*it2);
+      ++it2;
+    }
+
+    ++res_it;
+    ++s;
+  }
+
+
+}
+
+
 void construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
 				      vector< double >& IC, //IC weights
@@ -102,6 +178,7 @@ void construct_reachability_instance( igraph_t& G,
   vgraphs.clear();
 
   myint n = igraph_vcount( &G );
+
   for (myint i = 0; i < ell; ++i) {
     if (i % 1 == 0) {
       cerr << "\r                                     \r"
@@ -110,9 +187,9 @@ void construct_reachability_instance( igraph_t& G,
 	   << "\% done";
     }
 
-    igraph_t G_i; //want a new address in memory each iteration
+    igraph_t* G_i = new igraph_t; //want a new address in memory each iteration    
 
-    sample_independent_cascade( G, IC, G_i );
+    sample_independent_cascade( G, IC, *G_i );
     //G_i now has an IC instance. Let's select the
     //externally activated nodes
     vector< myint > ext_act;
@@ -128,11 +205,11 @@ void construct_reachability_instance( igraph_t& G,
     igraph_vector_t v_tmp;
     igraph_vector_init( &v_tmp, 0 );
 
-    cerr << "\n" << forwardBFS( &G_i, ext_act, v_reach ) << ' ';
+    cerr << "\n" << forwardBFS( G_i, ext_act, v_reach ) << ' ';
 
     for (myint i = 0; i < v_reach.size(); ++i) {
 
-      igraph_incident( &G_i, &v_tmp, v_reach[i], IGRAPH_ALL );
+      igraph_incident( G_i, &v_tmp, v_reach[i], IGRAPH_ALL );
 
       igraph_vector_append( &v_edges_to_remove, &v_tmp );
 
@@ -144,14 +221,14 @@ void construct_reachability_instance( igraph_t& G,
 
     igraph_es_t es; //vertex selector for the reachable set to remove
     igraph_es_vector( &es, &v_edges_to_remove );
-    igraph_delete_edges( &G_i, es );
+    igraph_delete_edges( G_i, es );
     igraph_es_destroy( &es );
     igraph_vector_destroy( &v_edges_to_remove );
 
     cerr << "BFS done\n";
     //All edges incident to the reachable set have been removed
     //That is, H_i has been created
-    vgraphs.push_back( &G_i );
+    vgraphs.push_back( G_i );
   }
 
 }

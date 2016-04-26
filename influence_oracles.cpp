@@ -26,6 +26,26 @@ public:
   vector< vector< myint > > global_sketches;
 
   void compute_oracles();
+  double estimate_reachability_sketch( vector< myint >& asketch ) {
+    double uniform_rank;
+    double estimate;
+    if (asketch.size() == k) {
+      myint T = asketch.back();
+      uniform_rank = ((double) T - 1.0)/(ell * n - 1.0 );
+      estimate = ((double) k - 1)/ uniform_rank;
+    }
+    else {
+      estimate = ((double) aksetch.size());
+    }
+      
+    
+    //double estimate = 1.0 + 
+    //      ((double)(k - 1)*(n*ell - 1)) / (T - 1);
+
+    return estimate / ell;
+
+  }
+
   double estimate_reachability( myint vertex ) {
     double uniform_rank;
     double estimate;
@@ -229,8 +249,10 @@ void influence_oracles::compute_oracles() {
     // for each vertex in instance i by increasing rank
     for (myint j = 0; j < n; ++j) {
       myint vertex = instanceRanks[i][j].second;
+
       // Run reverse BFS in instance i from 'vertex', 
       // updating sketches of discovered vertices
+      // (and not including vertex itself)
       update_local_sketches( v_instances[ i ],
 			     instanceRanks[i][j],
 			     local_sketches );
