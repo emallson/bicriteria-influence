@@ -34,6 +34,16 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
                myint k );
 
+void bicriteria( influence_oracles& oracles, 
+                 myint n, 
+                 double beta,
+                 double offset,
+		 //out parameters
+		 vector< myint >& seeds);
+
+void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
+	       vector< myint >& res_sk, 
+		myint k );
 
 
 int main(int argc, char** argv) {
@@ -55,11 +65,12 @@ int main(int argc, char** argv) {
   myint n = 1000;
   igraph_erdos_renyi_game(&base_graph, 
                           IGRAPH_ERDOS_RENYI_GNP, 
-                          n, 2.0/ n,
+                          n, 3.0 / n,
                           IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
   //  fclose( fp );
 
   cerr << "Constructing the IC model...\n";
+
   vector< double > IC_weights;
   construct_independent_cascade( base_graph, IC_weights );
 
@@ -72,11 +83,11 @@ int main(int argc, char** argv) {
   //create the set of graphs for the alg.
   cerr << "Constructing the gen. reach. instance...\n";
 
-  double beta = 0.3;
-  double alpha = 0.05;
+  double beta = 0.8;
+  double alpha = 0.01;
   double delta = 0.5;
   myint ell = log( 2/ delta ) / (alpha * alpha);
-  myint k_cohen = ell;
+  myint k_cohen = 20 * (myint)( log ( ((double) n) ) );
 
   cerr << "ell=" << ell << endl;
 
@@ -96,31 +107,54 @@ int main(int argc, char** argv) {
 
   cerr << "done" << endl;
 
-  cout << "avg reachability and estimates: ";
-  for (myint i = 0; i < n; ++i) {
-    cout << i << ' ' << my_oracles.average_reachability( i ) << ' ' << my_oracles.estimate_reachability( i ) << endl;
-  }
+  // cout << "avg reachability and estimates: ";
+  // for (myint i = 0; i < n; ++i) {
+  //   cout << i << ' ' << my_oracles.average_reachability( i ) << ' ' << my_oracles.estimate_reachability( i ) << endl;
+  // }
+
+  //run the bicriteria alg.
+  vector< myint > seed_set;
+  bicriteria( my_oracles, n, beta, offset,
+	      seed_set );
+
+  cout << "Size of seed set: " << seed_set.size() << endl;
 
   return 0;
+}
+
+void print_sketch( vector< myint >& sk1 ) {
+  for (myint i = 0; i < sk1.size(); ++i) {
+    cout << sk1[i] << ' ';
+  }
+
+  cout << endl;
 }
 
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  double beta,
-                 double offset ) {
-  vector< myint > sketch;
+                 double offset,
+		 //out parameters
+		 vector< myint >& seeds) {
+  cerr << "offset = " << offset << endl;
 
-  double est_infl = 0.0;
-  double marginal_gain = 0.0;
+  vector< myint > sketch;
+  vector< vector < myint > > track_sketches;
+
+
+  double est_infl = offset;
+    double max_marg = 0.0;
   myint next_node = 0;
+  double curr_tau = 0.0;
 
   vector< myint > tmp_sketch;
-  vector< myint > seeds;
   while (est_infl < beta * n ) {
+    track_sketches.push_back( sketch );
     //select the node with the max. marginal gain
     //for each u
-    double max_marg = 0;
-    double curr_tau = oracles.estimate_reachability_sketch( sketch );
+
+    max_marg = 0.0;
+    curr_tau = oracles.estimate_reachability_sketch( sketch );
     for (myint u = 0; u < n; ++u) {
       //tmp_sketch = merge( sketch, sketch_u )
       my_merge( sketch, oracles.global_sketches[ u ], tmp_sketch, oracles.k );
@@ -131,14 +165,97 @@ void bicriteria( influence_oracles& oracles,
 	next_node = u;
       }
     }
+
     //pick the max. one, update sketch
+    // cout << "Merging sketches:\n";
+    // print_sketch( sketch );
+    // print_sketch( oracles.global_sketches[ next_node ] );
     my_merge( sketch, oracles.global_sketches[ next_node ], tmp_sketch, oracles.k );
     sketch.swap( tmp_sketch );
+    // cout << "to get sketch:\n";
+    // print_sketch( sketch );
+
+    //    print_sketch( oracles.global_sketches[ next_node ] );
+    // for (myint jj = 0; jj < track_sketches.size(); ++jj) {
+    //   my_merge( track_sketches[jj], oracles.global_sketches[ next_node ], tmp_sketch, oracles.k );
+      // cout << "tau_init: " << oracles.estimate_reachability_sketch( track_sketches[jj] )
+      // 	   << " tau_addu: " << oracles.estimate_reachability_sketch( tmp_sketch )
+      // 	   << " margin: " << oracles.estimate_reachability_sketch( tmp_sketch ) - 
+      // 	oracles.estimate_reachability_sketch( track_sketches[jj] )
+      // 	   << endl;
+
+      //      print_sketch( track_sketches[jj] );
+      //      print_sketch( tmp_sketch );
+    //   }
+
     seeds.push_back( next_node );
 
-    est_infl = offset + curr_tau + max_marg;
+    est_infl = offset + curr_tau + max_marg + seeds.size();
+
+    cerr << est_infl << ' ' << curr_tau << ' ' <<  max_marg << ' ' << next_node << endl;
+    cerr << "perm rank " << sketch.back() << endl;
   }
 
+
+}
+
+void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
+	       vector< myint >& res_sk, 
+               myint k ) {
+  //this is not really a merge, seems to be what cohen is saying
+  //in the 1997 paper. Rather is coordinate-wise min.
+  
+  vector< myint >::iterator it1 = sk1.begin();
+  vector< myint >::iterator it2 = sk2.begin();
+
+  myint l = sk1.size();
+  if (sk2.size() > l)
+    l = sk2.size();
+
+  res_sk.assign( l, 0 );
+
+  vector< myint >::iterator res_it = res_sk.begin();
+
+  myint s = 0; //size
+
+  while (s < l) {
+    //add the smallest of coordinates
+    if (it1 != sk1.end()) {
+      if (it2 != sk2.end()) {
+	if ( (*it1) < (*it2) ) {
+	  (*res_it) = (*it1);
+	  ++it1;
+	  ++it2;
+	} else {
+	  if ( (*it1) > (*it2) ) {
+	    (*res_it) = (*it2);
+	    ++it2;
+	    ++it1;
+	  } else {
+	    //the values are equal
+	    //but we can only have
+	    //an element appear once
+	    //so insert it, and increment both
+	    (*res_it) = (*it1);
+	    ++it1;
+	    ++it2;
+	  }
+	}
+      } else { //we're done with sketch2.
+	//just add from sk1
+	(*res_it) = (*it1);
+	++it1;
+      }
+    } else {
+      //done with sk1,
+      //add from sk2
+      (*res_it) = (*it2);
+      ++it2;
+    }
+
+    ++res_it;
+    ++s;
+  }
 
 }
 
@@ -162,10 +279,33 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
   while (s < l) {
     //add the smallest next one
-    if ( (*it1) < (*it2) ) {
-      (*res_it) = (*it1);
-      ++it1;
+    if (it1 != sk1.end()) {
+      if (it2 != sk2.end()) {
+	if ( (*it1) < (*it2) ) {
+	  (*res_it) = (*it1);
+	  ++it1;
+	} else {
+	  if ( (*it1) > (*it2) ) {
+	    (*res_it) = (*it2);
+	    ++it2;
+	  } else {
+	    //the values are equal
+	    //but we can only have
+	    //an element appear once
+	    //so insert it, and increment both
+	    (*res_it) = (*it1);
+	    ++it1;
+	    ++it2;
+	  }
+	}
+      } else { //we're done with sketch2.
+	//just add from sk1
+	(*res_it) = (*it1);
+	++it1;
+      }
     } else {
+      //done with sk1,
+      //add from sk2
       (*res_it) = (*it2);
       ++it2;
     }
