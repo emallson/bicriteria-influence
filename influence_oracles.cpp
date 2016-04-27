@@ -35,7 +35,7 @@ public:
       estimate = ((double) k - 1)/ uniform_rank;
     }
     else {
-      estimate = ((double) aksetch.size());
+      estimate = ((double) asketch.size());
     }
       
     

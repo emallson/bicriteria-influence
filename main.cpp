@@ -5,6 +5,7 @@
 #include <random>
 #include <fstream>
 #include <cstdio>
+#include <cmath>
 
 using namespace std;
 
@@ -15,13 +16,13 @@ std::mt19937 gen(rd());
 //function prototypes
 void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights );
 void construct_external_influence( igraph_t& G, vector< double >& node_probs );
-void construct_reachability_instance( igraph_t& G, 
+double construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
 				      vector< double >& IC, //IC weights
 				      vector< double >& NP, //Node probabilities
 				      myint ell );
 void sample_independent_cascade( igraph_t& G, 
-				 vector< double >& edge_weights, 
+				 vector< double >& edgne_weights, 
 				 igraph_t& sample_graph );
 
 void sample_external_influence( igraph_t& G, 
@@ -29,6 +30,9 @@ void sample_external_influence( igraph_t& G,
 				vector< myint >& nodes_sampled );
 
 myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood );
+void my_merge( vector< myint >& sk1, vector< myint >& sk2,
+	       vector< myint >& res_sk, 
+               myint k );
 
 
 
@@ -48,9 +52,11 @@ int main(int argc, char** argv) {
 
   igraph_t base_graph;
   //  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
-  myint n = 10000;
-  igraph_erdos_renyi_game(&base_graph, IGRAPH_ERDOS_RENYI_GNP, n, 1.0/ n,
-			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+  myint n = 1000;
+  igraph_erdos_renyi_game(&base_graph, 
+                          IGRAPH_ERDOS_RENYI_GNP, 
+                          n, 2.0/ n,
+                          IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
   //  fclose( fp );
 
   cerr << "Constructing the IC model...\n";
@@ -66,19 +72,20 @@ int main(int argc, char** argv) {
   //create the set of graphs for the alg.
   cerr << "Constructing the gen. reach. instance...\n";
 
-  myint ell = 10;
+  double beta = 0.3;
+  double alpha = 0.05;
+  double delta = 0.5;
+  myint ell = log( 2/ delta ) / (alpha * alpha);
   myint k_cohen = ell;
 
+  cerr << "ell=" << ell << endl;
+
   vector< igraph_t* > v_graphs; // the ell graphs
-  construct_reachability_instance( base_graph, 
+  double offset = construct_reachability_instance( base_graph, 
 				   v_graphs, 
 				   IC_weights,
 				   node_probs,
 				   ell );
-
-  for (myint i = 0; i < ell; ++i) {
-    cerr << igraph_vcount( v_graphs[i] ) << endl;
-  }
 
   //create the oracles
   influence_oracles my_oracles( v_graphs, ell, k_cohen, n );
@@ -97,7 +104,10 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-void bicriteria( infuence_oracles& oracles, myint n, double alpha ) {
+void bicriteria( influence_oracles& oracles, 
+                 myint n, 
+                 double beta,
+                 double offset ) {
   vector< myint > sketch;
 
   double est_infl = 0.0;
@@ -106,17 +116,15 @@ void bicriteria( infuence_oracles& oracles, myint n, double alpha ) {
 
   vector< myint > tmp_sketch;
   vector< myint > seeds;
-  while (est_infl < alpha * n ) {
+  while (est_infl < beta * n ) {
     //select the node with the max. marginal gain
     //for each u
     double max_marg = 0;
     double curr_tau = oracles.estimate_reachability_sketch( sketch );
     for (myint u = 0; u < n; ++u) {
       //tmp_sketch = merge( sketch, sketch_u )
-      my_merge( sketch, oracles.global_sketches[ u ], tmp_sketch, k );
+      my_merge( sketch, oracles.global_sketches[ u ], tmp_sketch, oracles.k );
       
-
-      //estimate size based on tmp_sketch
       double tmp_marg = oracles.estimate_reachability_sketch( tmp_sketch ) - curr_tau;
       if (tmp_marg > max_marg) {
 	max_marg = tmp_marg;
@@ -124,18 +132,19 @@ void bicriteria( infuence_oracles& oracles, myint n, double alpha ) {
       }
     }
     //pick the max. one, update sketch
-    my_merge( sketch, oracles.global_sketches[ next_node ], tmp_sketch, k );
+    my_merge( sketch, oracles.global_sketches[ next_node ], tmp_sketch, oracles.k );
     sketch.swap( tmp_sketch );
     seeds.push_back( next_node );
 
-    est_infl = beta + curr_tau + max_marg;
+    est_infl = offset + curr_tau + max_marg;
   }
 
 
 }
 
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
-	       vector< myint >& res_sk, k ) {
+	       vector< myint >& res_sk, 
+               myint k ) {
   //	       , vector< myint >& seeds ) {
 
   vector< myint >::iterator it1 = sk1.begin();
@@ -169,7 +178,7 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 }
 
 
-void construct_reachability_instance( igraph_t& G, 
+double construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
 				      vector< double >& IC, //IC weights
 				      vector< double >& NP, //Node probabilities
@@ -178,7 +187,7 @@ void construct_reachability_instance( igraph_t& G,
   vgraphs.clear();
 
   myint n = igraph_vcount( &G );
-
+  double offset = 0.0;
   for (myint i = 0; i < ell; ++i) {
     if (i % 1 == 0) {
       cerr << "\r                                     \r"
@@ -207,6 +216,8 @@ void construct_reachability_instance( igraph_t& G,
 
     cerr << "\n" << forwardBFS( G_i, ext_act, v_reach ) << ' ';
 
+    offset += v_reach.size();
+
     for (myint i = 0; i < v_reach.size(); ++i) {
 
       igraph_incident( G_i, &v_tmp, v_reach[i], IGRAPH_ALL );
@@ -231,6 +242,7 @@ void construct_reachability_instance( igraph_t& G,
     vgraphs.push_back( G_i );
   }
 
+  return offset / ell;
 }
 
 
@@ -285,7 +297,7 @@ void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights 
 void construct_external_influence( igraph_t& G, vector< double >& node_probs ) {
   node_probs.clear();
 
-  std::uniform_real_distribution<> dis(0, 0.1);
+  std::uniform_real_distribution<> dis(0, 0.05);
 
   myint n = igraph_vcount( &G );
 
