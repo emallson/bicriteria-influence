@@ -14,7 +14,8 @@ std::random_device rd;
 std::mt19937 gen(rd());
 
 //function prototypes
-void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights );
+void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights,
+				    double int_maxprob);
 void construct_external_influence( igraph_t& G, vector< double >& node_probs, double max_prob );
 double construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
@@ -36,7 +37,7 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
-                 double beta,
+                 myint T,
                  double offset,
 		 //out parameters
 		 vector< myint >& seeds);
@@ -84,8 +85,9 @@ int main(int argc, char** argv) {
   
   cout << "n = " << n << endl;
   cout << "m = " << igraph_ecount( &base_graph ) << endl;
-  double beta;
-  ifile >> beta;
+  myint T;
+  //double beta;
+  ifile >> T;
   myint C = 2;
   double alpha;
   ifile >> alpha;
@@ -94,19 +96,24 @@ int main(int argc, char** argv) {
   myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
   myint k_cohen = 3 * (myint)( log ( ((double) n) ) );
 
+  double int_maxprob;
+  ifile >> int_maxprob;
+
   double ext_maxprob;
   ifile >> ext_maxprob;
-  cout << "beta = " << beta << endl;
+  //  cout << "beta = " << beta << endl;
+  cout << "T = " << T << endl;
   cout << "alpha = " << alpha << endl;
   cout << "ell = " << ell << endl;
   cout << "K = " << K << endl;
+  cout << "int_maxprob = " << int_maxprob << endl;
   cout << "ext_maxprob = " << ext_maxprob << endl;
 
   system("sleep 2");
 
   cout << "Constructing the IC model..." << endl;
   vector< double > IC_weights;
-  construct_independent_cascade( base_graph, IC_weights );
+  construct_independent_cascade( base_graph, IC_weights, int_maxprob );
 
   vector< double> node_probs;
   //this is a simple model of external influence
@@ -143,7 +150,7 @@ int main(int argc, char** argv) {
 
   //run the bicriteria alg.
   vector< myint > seed_set;
-  bicriteria( my_oracles, n, beta, offset,
+  bicriteria( my_oracles, n, T, offset,
 	      seed_set );
 
   cout << "Size of seed set: " << seed_set.size() << endl;
@@ -161,7 +168,7 @@ void print_sketch( vector< myint >& sk1 ) {
 
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
-                 double beta,
+                 myint T,
                  double offset,
 		 //out parameters
 		 vector< myint >& seeds) {
@@ -177,7 +184,7 @@ void bicriteria( influence_oracles& oracles,
   double curr_tau = 0.0;
 
   vector< myint > tmp_sketch;
-  while (est_infl < beta * n ) {
+  while (est_infl < T ) {
     track_sketches.push_back( sketch );
     //select the node with the max. marginal gain
     //for each u
@@ -453,10 +460,10 @@ int test_estimation()
 
 
 
-void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights ) {
+void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights, double int_maxprob) {
   edge_weights.clear();
 
-  std::uniform_real_distribution<> dis(0, 1);
+  std::uniform_real_distribution<> dis(0, int_maxprob);
 
   myint m = igraph_ecount( &G );
 
