@@ -62,10 +62,10 @@ int main(int argc, char** argv) {
 
   igraph_t base_graph;
   //  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
-  myint n = 1000;
+  myint n = 500;
   igraph_erdos_renyi_game(&base_graph, 
                           IGRAPH_ERDOS_RENYI_GNP, 
-                          n, 3.0 / n,
+                          n, 2.0 / n,
                           IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
   //  fclose( fp );
 
@@ -83,13 +83,18 @@ int main(int argc, char** argv) {
   //create the set of graphs for the alg.
   cerr << "Constructing the gen. reach. instance...\n";
 
-  double beta = 0.8;
-  double alpha = 0.01;
+  double beta = 0.1;
+  myint C = 4;
+  double alpha = 0.005;
+  myint K = 1.0 / (C * alpha);
   double delta = 0.5;
-  myint ell = log( 2/ delta ) / (alpha * alpha);
+  myint ell = log( 2 / delta ) / (alpha * alpha);
   myint k_cohen = 20 * (myint)( log ( ((double) n) ) );
 
   cerr << "ell=" << ell << endl;
+  cerr << "K=" << K << endl;
+
+  system("sleep 2");
 
   vector< igraph_t* > v_graphs; // the ell graphs
   double offset = construct_reachability_instance( base_graph, 
@@ -97,6 +102,10 @@ int main(int argc, char** argv) {
 				   IC_weights,
 				   node_probs,
 				   ell );
+  cerr << "offset=" << offset << endl;
+
+  system("sleep 1");
+
 
   //create the oracles
   influence_oracles my_oracles( v_graphs, ell, k_cohen, n );
@@ -354,7 +363,8 @@ double construct_reachability_instance( igraph_t& G,
     igraph_vector_t v_tmp;
     igraph_vector_init( &v_tmp, 0 );
 
-    cerr << "\n" << forwardBFS( G_i, ext_act, v_reach ) << ' ';
+    //    cerr << "\n" << ' ';
+    forwardBFS( G_i, ext_act, v_reach );
 
     offset += v_reach.size();
 
@@ -366,7 +376,7 @@ double construct_reachability_instance( igraph_t& G,
 
     }
 
-    cerr << igraph_vector_size( &v_edges_to_remove ) << "\n";
+    //cerr << igraph_vector_size( &v_edges_to_remove ) << "\n";
 
     igraph_vector_destroy(&v_tmp);
 
@@ -376,7 +386,7 @@ double construct_reachability_instance( igraph_t& G,
     igraph_es_destroy( &es );
     igraph_vector_destroy( &v_edges_to_remove );
 
-    cerr << "BFS done\n";
+    //    cerr << "BFS done\n";
     //All edges incident to the reachable set have been removed
     //That is, H_i has been created
     vgraphs.push_back( G_i );
@@ -436,10 +446,8 @@ void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights 
 
 void construct_external_influence( igraph_t& G, vector< double >& node_probs ) {
   node_probs.clear();
-
-  std::uniform_real_distribution<> dis(0, 0.05);
-
   myint n = igraph_vcount( &G );
+  std::uniform_real_distribution<> dis(0, 0.01 );
 
   for (myint i = 0; i < n; ++i) {
     node_probs.push_back( dis(gen) );
