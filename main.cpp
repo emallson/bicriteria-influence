@@ -15,7 +15,7 @@ std::mt19937 gen(rd());
 
 //function prototypes
 void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights );
-void construct_external_influence( igraph_t& G, vector< double >& node_probs );
+void construct_external_influence( igraph_t& G, vector< double >& node_probs, double max_prob );
 double construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
 				      vector< double >& IC, //IC weights
@@ -47,54 +47,74 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 
 
 int main(int argc, char** argv) {
+  igraph_t base_graph;
+  myint n;
   if (argc < 2) {
-
-    cerr << "Usage: " << argv[0] << " <base graph filename>\n";
+    cerr << "Usage: " << argv[0] << " <input filename>\n";
     return 1;
   }
-  
-  //  string bg_filename( argv[1] );
 
-  //  ifstream ifile( bg_filename.c_str());
+  string str_ifile( argv[1] );
+  ifstream ifile( str_ifile.c_str() );
 
-  //  FILE* fp;
-  //  fp = fopen( argv[1], "r" );
+  string bg_graph_type;
+  getline( ifile, bg_graph_type );
+  //  ifile >> bg_graph_type;
 
-  igraph_t base_graph;
-  //  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
-  myint n = 500;
-  igraph_erdos_renyi_game(&base_graph, 
+  if (bg_graph_type == "ER") {
+    ifile >> n;
+    igraph_erdos_renyi_game(&base_graph, 
                           IGRAPH_ERDOS_RENYI_GNP, 
                           n, 2.0 / n,
                           IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
-  //  fclose( fp );
 
-  cerr << "Constructing the IC model...\n";
 
+  } else {
+    //    ifstream ifile( bg_filename.c_str());
+    FILE* fp;
+    fp = fopen( bg_graph_type.c_str(), "r" );
+    //if the graph is directed
+    igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
+
+    fclose( fp );
+    n = igraph_vcount( &base_graph );
+
+    cout << "Base graph read from " << bg_graph_type << "..." << endl;
+  }
+  
+  cout << "n = " << n << endl;
+  cout << "m = " << igraph_ecount( &base_graph ) << endl;
+  double beta;
+  ifile >> beta;
+  myint C = 2;
+  double alpha;
+  ifile >> alpha;
+  myint K = 1.0 / (C * alpha);
+  double delta = 0.5;
+  myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
+  myint k_cohen = 3 * (myint)( log ( ((double) n) ) );
+
+  double ext_maxprob;
+  ifile >> ext_maxprob;
+  cout << "beta = " << beta << endl;
+  cout << "alpha = " << alpha << endl;
+  cout << "ell = " << ell << endl;
+  cout << "K = " << K << endl;
+  cout << "ext_maxprob = " << ext_maxprob << endl;
+
+  system("sleep 2");
+
+  cout << "Constructing the IC model..." << endl;
   vector< double > IC_weights;
   construct_independent_cascade( base_graph, IC_weights );
 
   vector< double> node_probs;
-
   //this is a simple model of external influence
-  cerr << "Constructing external influence...\n";
-  construct_external_influence( base_graph, node_probs );
+  cout << "Constructing external influence..." << endl;
+  construct_external_influence( base_graph, node_probs, ext_maxprob );
 
   //create the set of graphs for the alg.
   cerr << "Constructing the gen. reach. instance...\n";
-
-  double beta = 0.1;
-  myint C = 4;
-  double alpha = 0.005;
-  myint K = 1.0 / (C * alpha);
-  double delta = 0.5;
-  myint ell = log( 2 / delta ) / (alpha * alpha);
-  myint k_cohen = 20 * (myint)( log ( ((double) n) ) );
-
-  cerr << "ell=" << ell << endl;
-  cerr << "K=" << K << endl;
-
-  system("sleep 2");
 
   vector< igraph_t* > v_graphs; // the ell graphs
   double offset = construct_reachability_instance( base_graph, 
@@ -392,6 +412,8 @@ double construct_reachability_instance( igraph_t& G,
     vgraphs.push_back( G_i );
   }
 
+  cout << "\r                               \r100% done" << endl;
+
   return offset / ell;
 }
 
@@ -444,10 +466,10 @@ void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights 
 
 }
 
-void construct_external_influence( igraph_t& G, vector< double >& node_probs ) {
+void construct_external_influence( igraph_t& G, vector< double >& node_probs, double max_prob ) {
   node_probs.clear();
   myint n = igraph_vcount( &G );
-  std::uniform_real_distribution<> dis(0, 0.01 );
+  std::uniform_real_distribution<> dis(0, max_prob );
 
   for (myint i = 0; i < n; ++i) {
     node_probs.push_back( dis(gen) );
