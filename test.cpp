@@ -4,7 +4,7 @@
 #include <ctime>
 
 int main() {
-  myint n = 10000;
+  myint n = 100;
 
   igraph_t base_graph;
 
@@ -53,8 +53,20 @@ int main() {
   
   t_end = clock();
   
-t_elapsed = (double) (t_end - t_start) / CLOCKS_PER_SEC;
+  t_elapsed = (double) (t_end - t_start) / CLOCKS_PER_SEC;
 
   cout << "Done in " << t_elapsed << " seconds" << endl;
+
+  for (myint i = 0; i < igraph_vector_ptr_size( &res );
+       ++i ) {
+    igraph_vector_t* v;
+    v = (igraph_vector_t* ) igraph_vector_ptr_e( &res, i );
+    cout << "node " << i << ": ";
+    for (myint j = 0; j < igraph_vector_size( v ); ++j) {
+      cout << igraph_vector_e( v, j ) << ' ';
+    }
+
+    cout << endl;
+  }
 
 }

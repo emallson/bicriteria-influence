@@ -155,13 +155,13 @@ public:
   }
 
   void rankorder_BFS( igraph_t* G_i, 
-                      igraph_vector_t& vRO ) {
+                      igraph_vector_t& vRO,
+                      igraph_vector_ptr_t& res) {
 
     //get neighborhoods for all nodes
     igraph_vs_t vs;
     igraph_vs_vector( &vs, &vRO );
 
-    igraph_vector_ptr_t res;
     igraph_neighborhood(
 			G_i,
 			&res,
@@ -307,101 +307,119 @@ void influence_oracles::compute_oracles() {
 
 }
 
-// void influence_oracles::alt_compute_oracles() {
-//   // create the permutation of size n*ell
-//   myint K = n * ell;
-//   vector< mypair > perm;
-//   perm.reserve( K );
-//   for (myint u = 0; u < n; ++u) {
-//     for (myint i = 0; i < ell; ++i) {
+void influence_oracles::alt_compute_oracles() {
+  // create the permutation of size n*ell
+  myint K = n * ell;
+  vector< mypair > perm;
+  perm.reserve( K );
+  for (myint u = 0; u < n; ++u) {
+    for (myint i = 0; i < ell; ++i) {
 
-//       mypair tmp;
-//       tmp.first = u;
-//       tmp.second = i;
-//       perm.push_back( tmp );
-//     }
-//   }
+      mypair tmp;
+      tmp.first = u;
+      tmp.second = i;
+      perm.push_back( tmp );
+    }
+  }
 
-//   random_shuffle( perm.begin(), perm.end() );
+  random_shuffle( perm.begin(), perm.end() );
 
-//   cerr << "Permutation shuffled" << endl;
+  cerr << "Permutation shuffled" << endl;
 
-//   // group ranks by instance
-//   // the pairs are in order of rank
-//   vector< mypair > emptyInstance;
-//   vector< vector < mypair > > instanceRanks( ell, emptyInstance );
+  // group ranks by instance
+  // the pairs are in order of rank
+  vector< mypair > emptyInstance;
+  vector< vector < mypair > > instanceRanks( ell, emptyInstance );
 
-//   for (myint r = 1; r <= K; ++r ) {
-//     myint i = perm[ r - 1 ].second;
-//     mypair tmp;
-//     tmp.first = r;
-//     tmp.second = perm[ r - 1 ].first;
-//     instanceRanks[i].push_back( tmp );
-//   }
+  for (myint r = 1; r <= K; ++r ) {
+    myint i = perm[ r - 1 ].second;
+    mypair tmp;
+    tmp.first = r;
+    tmp.second = perm[ r - 1 ].first;
+    instanceRanks[i].push_back( tmp );
+  }
 
-//   // compute combined bottom-k rank sketches
+  // compute combined bottom-k rank sketches
   
-//   // for each instance i, compute local bottom-k sketches
-//   vector < vector< myint > > local_sketches;
-//   vector < myint > empty_sketch;
-//   global_sketches.assign( n, empty_sketch );
+  // for each instance i, compute local bottom-k sketches
+  vector < vector< myint > > local_sketches;
+  vector < myint > empty_sketch;
+  global_sketches.assign( n, empty_sketch );
   
-//   for (myint i = 0; i < ell; ++i) {
-//     cerr << i << endl;
-//     local_sketches.clear();
-//     local_sketches.assign( n, empty_sketch );
+  for (myint i = 0; i < ell; ++i) {
+    cerr << i << endl;
+    local_sketches.clear();
+    local_sketches.assign( n, empty_sketch );
       
-//     // for each vertex in instance i by increasing rank
-//     cerr << "Updating local ranks..." << endl;
+    // for each vertex in instance i by increasing rank
+    igraph_vector_t vRankOrder;
+    igraph_vector_init( &vRankOrder, 0 );
 
-//     igraph_vector_t vRankOrder;
-//     igraph_vector_init( &vRankOrder, 0 );
+    for (myint j = 0; j < n; ++j) {
+      myint vertex = instanceRanks[i][j].second;
+      igraph_vector_push_back( &vRankOrder, vertex );
+    }
 
-//     for (myint j = 0; j < n; ++j) {
-//       myint vertex = instanceRanks[i][j].second;
-//       igraph_vector_push_back( &vRankOrder, vertex );
-//     }
-
-
-//     // Run reverse BFS in instance i from 'vertex', 
-//     // updating sketches of discovered vertices
-//     // (and not including vertex itself)
+    // Run reverse BFS in instance i from 'vertex', 
+    // updating sketches of discovered vertices
+    // (and not including vertex itself)
+    igraph_vector_ptr_t res;
+    igraph_vector_ptr_init( &res, 0 );
+    rankorder_BFS( v_instances[i],
+                   vRankOrder, res );
+    //res now contains the neighborhood
+    //lists, in the correct order
     
-//     rankorder_BFS( v_instances[i],
-//                    vRankOrder );
-    
-//       update_local_sketches( v_instances[ i ],
-// 			     instanceRanks[i][j],
-// 			     local_sketches );
-//     }
-    
-//     cerr << "Performing merges..." << endl;
-//     // merge local_sketches in instance i
-//     // into the global sketch for each node
-//     vector< myint > new_sketch;
-//     for (myint u = 0; u < n; ++u) {
-//       new_sketch.assign( local_sketches[u].size()
-//                          + global_sketches[u].size(),
-//                          0
-//                         );
+    //insert ranks of roots to reverse
+    //reachable nodes
+    for (myint ii = 0; 
+         ii < igraph_vector_ptr_size( &res ); 
+         ++ii ) {
+      igraph_vector_t* v;
+      //get the nbhd list for the node at this rank
+      v = (igraph_vector_t* ) igraph_vector_ptr_e( &res, i );
+      for (myint j = 0; 
+           j < igraph_vector_size( v ); 
+           ++j) {
+        //aa is a reverse reachable node from rank ii
+        myint aa = igraph_vector_e( v, j );
+        //push the rank of the ii'th node
+        //onto the sketch of aa
+        if (local_sketches[aa].size() < k)
+          local_sketches[aa].push_back( instanceRanks[i][ii].first );
+      }
+    }
+    //can deallocate res now
+    igraph_vector_ptr_destroy( &res );
+    igraph_vector_destroy( &vRankOrder );
 
-//       merge( local_sketches[u].begin(),
-//              local_sketches[u].end(),
-//              global_sketches[u].begin(),
-//              global_sketches[u].end(),
-//              new_sketch.begin() );
+    cerr << "Performing merges..." << endl;
+    // merge local_sketches in instance i
+    // into the global sketch for each node
+    vector< myint > new_sketch;
+    for (myint u = 0; u < n; ++u) {
+      new_sketch.assign( local_sketches[u].size()
+                         + global_sketches[u].size(),
+                         0
+                        );
 
-//       if (new_sketch.size() > k)
-//         new_sketch.resize( k );
+      merge( local_sketches[u].begin(),
+             local_sketches[u].end(),
+             global_sketches[u].begin(),
+             global_sketches[u].end(),
+             new_sketch.begin() );
 
-//       global_sketches[u].swap( new_sketch );
+      if (new_sketch.size() > k)
+        new_sketch.resize( k );
+
+      global_sketches[u].swap( new_sketch );
       
-//     }
+    }
 
 
-//   }
+  }
+}
 
-// }
 
 
 

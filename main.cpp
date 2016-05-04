@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
   
   cerr << "computing oracles...\n";
 
-  my_oracles.compute_oracles();
+  my_oracles.alt_compute_oracles();
 
   cerr << "done" << endl;
 
