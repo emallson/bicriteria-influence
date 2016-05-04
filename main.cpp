@@ -35,6 +35,12 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
                myint k );
 
+double compute_oracles_online( igraph_t& G,
+                               vector< double >& IC,
+                               vector< double >& NP,
+                               myint ell,
+                               influence_oracles& O);
+
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  myint T,
@@ -120,28 +126,35 @@ int main(int argc, char** argv) {
   cout << "Constructing external influence..." << endl;
   construct_external_influence( base_graph, node_probs, ext_maxprob );
 
-  //create the set of graphs for the alg.
-  cerr << "Constructing the gen. reach. instance...\n";
+  cerr << "Computing oracles online...\n";
 
-  vector< igraph_t* > v_graphs; // the ell graphs
-  double offset = construct_reachability_instance( base_graph, 
-				   v_graphs, 
-				   IC_weights,
-				   node_probs,
-				   ell );
+  //  vector< igraph_t* > v_graphs; // the ell graphs
+  
+  // double offset = construct_reachability_instance( 
+  //                                  base_graph, 
+  //       			   v_graphs, 
+  //       			   IC_weights,
+  //       			   node_probs,
+  //       			   ell );
+
+  //create the oracles
+  influence_oracles my_oracles( ell, k_cohen, n );
+
+  double offset = compute_oracles_online(
+                                         base_graph,
+                                         IC_weights,
+                                         node_probs,
+                                         ell,
+                                         my_oracles );
   cerr << "offset=" << offset << endl;
 
   system("sleep 1");
 
+  // cerr << "computing oracles...\n";
 
-  //create the oracles
-  influence_oracles my_oracles( v_graphs, ell, k_cohen, n );
-  
-  cerr << "computing oracles...\n";
+  // my_oracles.alt_compute_oracles();
 
-  my_oracles.alt_compute_oracles();
-
-  cerr << "done" << endl;
+  // cerr << "done" << endl;
 
   // cout << "avg reachability and estimates: ";
   // for (myint i = 0; i < n; ++i) {
@@ -353,6 +366,79 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
 }
 
+//takes place of 'construct_reachability_instance'
+//does not store any of the reachability graphs
+//works with the oracle online functions
+double compute_oracles_online( igraph_t& G,
+                               vector< double >& IC,
+                               vector< double >& NP,
+                               myint ell,
+                               influence_oracles& O) {
+  O.compute_oracles_online_init();
+  myint n = igraph_vcount( &G );
+  double offset = 0.0;
+  for (myint i = 0; i < ell; ++i) {
+    if (i % 1 == 0) {
+      cout << "\r                                     \r"
+	   << ((double) i )/ ell * 100 
+	//	   << i
+	   << "\% done";
+      cout.flush();
+    }
+
+    igraph_t G_i; 
+
+    sample_independent_cascade( G, IC, G_i );
+    //G_i now has an IC instance. Let's select the
+    //externally activated nodes
+    vector< myint > ext_act;
+    //need to initialize ext_act
+    sample_external_influence( G, NP, ext_act );
+    //remove the reachable set in G_i, of the externally activated set.
+    //actually, what we want is to remove all 
+    //edges incident to reachable
+    //set.
+    vector< myint > v_reach;
+
+    igraph_vector_t v_edges_to_remove;
+    igraph_vector_init( &v_edges_to_remove, 0 );
+    igraph_vector_t v_tmp;
+    igraph_vector_init( &v_tmp, 0 );
+
+    forwardBFS( &G_i, ext_act, v_reach );
+
+    offset += v_reach.size();
+  
+    for (myint iii = 0; iii < v_reach.size(); ++iii) {
+      igraph_incident( &G_i, &v_tmp, v_reach[iii], IGRAPH_ALL );
+
+      igraph_vector_append( &v_edges_to_remove, &v_tmp );
+
+    }
+    igraph_vector_destroy(&v_tmp);
+
+    igraph_es_t es; //vertex selector for the reachable set to remove
+    igraph_es_vector( &es, &v_edges_to_remove );
+    igraph_delete_edges( &G_i, es );
+    igraph_es_destroy( &es );
+    igraph_vector_destroy( &v_edges_to_remove );
+
+    //All edges incident to the reachable 
+    //set have been removed
+    //That is, H_i has been created
+    
+    //use it for the oracle computation,
+    //but do then discard it
+
+    O.compute_oracles_online_step( &G_i, i );
+  }
+
+  cout << "\r                               \r100% done" << endl;
+
+  return offset / ell;
+
+}
+
 
 double construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
@@ -414,7 +500,8 @@ double construct_reachability_instance( igraph_t& G,
     igraph_vector_destroy( &v_edges_to_remove );
 
     //    cerr << "BFS done\n";
-    //All edges incident to the reachable set have been removed
+    //All edges incident to the reachable set 
+    //have been removed
     //That is, H_i has been created
     vgraphs.push_back( G_i );
   }

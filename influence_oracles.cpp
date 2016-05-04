@@ -22,11 +22,15 @@ public:
   myint n;
 
   vector< igraph_t* > v_instances;
-
   vector< vector< myint > > global_sketches;
+  vector< vector< mypair > > instanceRanks;
 
   void compute_oracles();
   void alt_compute_oracles();
+
+  void compute_oracles_online_init();
+  void compute_oracles_online_step( igraph_t* H_i,
+                                    myint i );
 
   double estimate_reachability_sketch( vector< myint >& asketch ) {
     double uniform_rank;
@@ -83,6 +87,17 @@ public:
 
   void merge_sketches(vector< myint >& sketch_1, vector< myint >& sketch_2, 
 		      vector< myint >& result ) {}
+  //This version of the constructor does not
+  //store any of the instances.
+  //To compute the oracles, the online
+  //functions must be called
+  influence_oracles( myint in_ell,
+                     myint in_k,
+                     myint in_n ) :
+    ell( in_ell ), 
+    k( in_k ),
+    n( in_n )
+  { }
 
   influence_oracles( vector< igraph_t* >& in_instances,
                      myint in_ell, 
@@ -340,8 +355,8 @@ void influence_oracles::alt_compute_oracles() {
   }
 
   // compute combined bottom-k rank sketches
-  
-  // for each instance i, compute local bottom-k sketches
+  // for each instance i, compute local 
+  // bottom-k sketches
   vector < vector< myint > > local_sketches;
   vector < myint > empty_sketch;
   global_sketches.assign( n, empty_sketch );
@@ -420,6 +435,122 @@ void influence_oracles::alt_compute_oracles() {
   }
 }
 
+void influence_oracles::compute_oracles_online_init() {
+  //create the permutation and ranks
+  //we already know ell, even though we don't have
+  //the graphs
+  
+  // create the permutation of size n*ell
+  myint K = n * ell;
+  vector< mypair > perm;
+  perm.reserve( K );
+  for (myint u = 0; u < n; ++u) {
+    for (myint i = 0; i < ell; ++i) {
+      mypair tmp;
+      tmp.first = u;
+      tmp.second = i;
+      perm.push_back( tmp );
+    }
+  }
+
+  //shuffle the permutation
+  random_shuffle( perm.begin(), perm.end() );
+
+  // group ranks by instance
+  // the pairs are in order of rank
+  vector< mypair > emptyInstance;
+  instanceRanks.assign( ell, emptyInstance );
+
+  for (myint r = 1; r <= K; ++r ) {
+    myint i = perm[ r - 1 ].second;
+    mypair tmp;
+    tmp.first = r;
+    tmp.second = perm[ r - 1 ].first;
+    instanceRanks[i].push_back( tmp );
+  }
+
+  vector < myint > empty_sketch;
+  global_sketches.assign( n, empty_sketch );
+
+}
+
+void influence_oracles::
+compute_oracles_online_step(
+                            igraph_t* H_i,
+                            myint i
+                            ) {
+  vector < vector< myint > > local_sketches;
+  vector < myint > empty_sketch;
+  local_sketches.assign( n, empty_sketch );
+  // for each vertex in instance i by increasing rank
+  igraph_vector_t vRankOrder;
+  igraph_vector_init( &vRankOrder, 0 );
+  
+  for (myint j = 0; j < n; ++j) {
+    myint vertex = instanceRanks[i][j].second;
+    igraph_vector_push_back( &vRankOrder, vertex );
+  }
+
+  // Run reverse BFS in instance i from 'vertex', 
+  // updating sketches of discovered vertices
+  // (and not including vertex itself)
+  // (or including it)
+
+  igraph_vector_ptr_t res;
+  igraph_vector_ptr_init( &res, 0 );
+  rankorder_BFS( H_i,
+                 vRankOrder, res );
+  //res now contains the neighborhood
+  //lists, in the correct order
+  //insert ranks of roots to reverse
+  //reachable nodes
+  for (myint ii = 0; 
+       ii < igraph_vector_ptr_size( &res ); 
+       ++ii ) {
+    igraph_vector_t* v;
+    //get the nbhd list for the node at this rank
+    v = (igraph_vector_t* ) igraph_vector_ptr_e( &res, i );
+    for (myint j = 0; 
+         j < igraph_vector_size( v ); 
+         ++j) {
+      //aa is a reverse reachable node from rank ii
+      myint aa = igraph_vector_e( v, j );
+      //push the rank of the ii'th node
+      //onto the sketch of aa
+      if (local_sketches[aa].size() < k)
+        local_sketches[aa].push_back( instanceRanks[i][ii].first );
+    }
+  }
+  //can deallocate res now
+  igraph_vector_ptr_destroy( &res );
+  igraph_vector_destroy( &vRankOrder );
+   
+  cerr << "Merging local sketches to global..." 
+       << endl;
+
+  // merge local_sketches in instance i
+  // into the global sketch for each node
+  vector< myint > new_sketch;
+  for (myint u = 0; u < n; ++u) {
+    new_sketch.assign( local_sketches[u].size()
+                       + global_sketches[u].size(),
+                       0
+                       );
+
+    merge( local_sketches[u].begin(),
+           local_sketches[u].end(),
+           global_sketches[u].begin(),
+           global_sketches[u].end(),
+           new_sketch.begin() );
+
+    if (new_sketch.size() > k)
+      new_sketch.resize( k );
+
+    global_sketches[u].swap( new_sketch );
+      
+  }
+
+}
 
 
 
