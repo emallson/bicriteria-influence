@@ -27,7 +27,7 @@ int main() {
   igraph_neighborhood( &base_graph,
                        &res,
                        vs,
-                       n,
+                       4,
                        IGRAPH_IN );
 
   clock_t t_end = clock();
