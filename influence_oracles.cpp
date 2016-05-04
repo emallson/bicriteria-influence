@@ -154,6 +154,23 @@ private:
 
   }
 
+  void alt_update_local_sketches( igraph_t* G_i, 
+				  vector< vector< myint > >& local_sketches ) {
+
+    //get neighborhoods for all nodes
+    igraph_vs_t vs;
+    igraph_vs_all( &vs );
+
+    igraph_vector_ptr_t res;
+    igraph_neighborhood(
+			G_i,
+			&res,
+			vs,
+			n,
+			IGRAPH_IN );
+
+  }
+
   void update_local_sketches( igraph_t* G_i, 
 			      mypair root, 
 			      vector< vector< myint > >& local_sketches ) {
@@ -193,6 +210,7 @@ private:
 	  if ( local_sketches[ aneigh ].size() < k ) {
 	    local_sketches[ aneigh ].push_back( root.first );
 	  }
+
 	}
       }
       igraph_vector_destroy( &neis );
@@ -219,7 +237,7 @@ void influence_oracles::compute_oracles() {
 
   random_shuffle( perm.begin(), perm.end() );
 
-
+  cerr << "Permutation shuffled" << endl;
 
   // group ranks by instance
   // the pairs are in order of rank
@@ -247,6 +265,7 @@ void influence_oracles::compute_oracles() {
     local_sketches.assign( n, empty_sketch );
       
     // for each vertex in instance i by increasing rank
+    cerr << "Updating local ranks..." << endl;
     for (myint j = 0; j < n; ++j) {
       myint vertex = instanceRanks[i][j].second;
 
@@ -257,7 +276,8 @@ void influence_oracles::compute_oracles() {
 			     instanceRanks[i][j],
 			     local_sketches );
     }
-
+    
+    cerr << "Performing merges..." << endl;
     // merge local_sketches in instance i
     // into the global sketch for each node
     vector< myint > new_sketch;
@@ -282,6 +302,98 @@ void influence_oracles::compute_oracles() {
 
 
   }
+
+void influence_oracles::alt_compute_oracles() {
+  // create the permutation of size n*ell
+  myint K = n * ell;
+  vector< mypair > perm;
+  perm.reserve( K );
+  for (myint u = 0; u < n; ++u) {
+    for (myint i = 0; i < ell; ++i) {
+
+      mypair tmp;
+      tmp.first = u;
+      tmp.second = i;
+      perm.push_back( tmp );
+    }
+  }
+
+  random_shuffle( perm.begin(), perm.end() );
+
+  cerr << "Permutation shuffled" << endl;
+
+  // group ranks by instance
+  // the pairs are in order of rank
+  vector< mypair > emptyInstance;
+  vector< vector < mypair > > instanceRanks( ell, emptyInstance );
+
+  for (myint r = 1; r <= K; ++r ) {
+    myint i = perm[ r - 1 ].second;
+    mypair tmp;
+    tmp.first = r;
+    tmp.second = perm[ r - 1 ].first;
+    instanceRanks[i].push_back( tmp );
+  }
+
+  // compute combined bottom-k rank sketches
+  
+  // for each instance i, compute local bottom-k sketches
+  vector < vector< myint > > local_sketches;
+  vector < myint > empty_sketch;
+  global_sketches.assign( n, empty_sketch );
+  
+  for (myint i = 0; i < ell; ++i) {
+    cerr << i << endl;
+    local_sketches.clear();
+    local_sketches.assign( n, empty_sketch );
+      
+    // for each vertex in instance i by increasing rank
+    cerr << "Updating local ranks..." << endl;
+
+    igraph_vector_t vRankOrder;
+    igraph_vector_init( &vRankOrder, 0 );
+
+    for (myint j = 0; j < n; ++j) {
+      myint vertex = instanceRanks[i][j].second;
+      igraph_vector_push_back( &vRankOrder, vertex );
+    }
+
+
+    // Run reverse BFS in instance i from 'vertex', 
+    // updating sketches of discovered vertices
+    // (and not including vertex itself)
+    
+      update_local_sketches( v_instances[ i ],
+			     instanceRanks[i][j],
+			     local_sketches );
+    }
+    
+    cerr << "Performing merges..." << endl;
+    // merge local_sketches in instance i
+    // into the global sketch for each node
+    vector< myint > new_sketch;
+    for (myint u = 0; u < n; ++u) {
+      new_sketch.assign( local_sketches[u].size()
+                         + global_sketches[u].size(),
+                         0
+                        );
+
+      merge( local_sketches[u].begin(),
+             local_sketches[u].end(),
+             global_sketches[u].begin(),
+             global_sketches[u].end(),
+             new_sketch.begin() );
+
+      if (new_sketch.size() > k)
+        new_sketch.resize( k );
+
+      global_sketches[u].swap( new_sketch );
+      
+    }
+
+
+  }
+
 }
 
 
