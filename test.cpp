@@ -8,20 +8,32 @@ int main() {
 
   igraph_t base_graph;
 
-  igraph_erdos_renyi_game(&base_graph, 
-                          IGRAPH_ERDOS_RENYI_GNP, 
-                          n, 2.0 / n,
-                          IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+  // igraph_erdos_renyi_game(&base_graph, 
+  //                         IGRAPH_ERDOS_RENYI_GNP, 
+  //                         n, 2.0 / n,
+  //                         IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+
+  igraph_empty( &base_graph, 100, false );
+  igraph_add_edge( &base_graph, 0, 1 );
+  igraph_add_edge( &base_graph, 0, 2 );
+  igraph_add_edge( &base_graph, 0, 3 );
 
   vector< igraph_t* > v1;
   v1.push_back( &base_graph );
   influence_oracles my_oracle( v1, 1, 1, n );
 
   cout << "Testing igraph_neighborhood..." << endl;
-  clock_t t_start = clock();
 
   igraph_vs_t vs;
-  igraph_vs_all( &vs );
+  //  igraph_vs_all( &vs );
+  igraph_vector_t myvec;
+  igraph_vector_init( &myvec, 0 );
+  igraph_vector_push_back( &myvec, 10 );
+  igraph_vector_push_back( &myvec, 0 );
+
+  igraph_vs_vector( &vs, &myvec );
+
+  clock_t t_start = clock();
   igraph_vector_ptr_t res;
   igraph_vector_ptr_init( &res, 0 );
   igraph_neighborhood( &base_graph,
