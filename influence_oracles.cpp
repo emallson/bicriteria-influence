@@ -525,6 +525,7 @@ compute_oracles_online_step(
     }
   }
   //can deallocate res now
+  IGRAPH_VECTOR_PTR_SET_ITEM_DESTRUCTOR( &res, &igraph_vector_destroy );
   igraph_vector_ptr_destroy_all( &res );
   igraph_vector_destroy( &vRankOrder );
    
@@ -550,7 +551,6 @@ compute_oracles_online_step(
       new_sketch.resize( k );
 
     global_sketches[u].swap( new_sketch );
-      
   }
 
 }
