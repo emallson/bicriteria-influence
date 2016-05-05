@@ -168,6 +168,8 @@ int main(int argc, char** argv) {
 
   cout << "Size of seed set: " << seed_set.size() << endl;
 
+  igraph_destroy( &base_graph);
+
   return 0;
 }
 
@@ -431,6 +433,7 @@ double compute_oracles_online( igraph_t& G,
     //but do then discard it
 
     O.compute_oracles_online_step( &G_i, i );
+    igraph_destroy( &G_i );
   }
 
   cout << "\r                               \r100% done" << endl;

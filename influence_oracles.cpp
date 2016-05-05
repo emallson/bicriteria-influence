@@ -185,7 +185,7 @@ public:
 			IGRAPH_IN );
 
     
-
+    igraph_vs_destroy( &vs );
   }
 
   void update_local_sketches( igraph_t* G_i, 
@@ -405,7 +405,10 @@ void influence_oracles::alt_compute_oracles() {
       }
     }
     //can deallocate res now
-    igraph_vector_ptr_destroy( &res );
+    //    void (*mypointer)( igraph_vector_t* ) = &igraph_vector_destroy;
+    //    igraph_vector_ptr_set_item_destructor(&res,
+    //					  mypointer );
+    igraph_vector_ptr_destroy_all( &res );
     igraph_vector_destroy( &vRankOrder );
 
     cerr << "Performing merges..." << endl;
@@ -522,7 +525,7 @@ compute_oracles_online_step(
     }
   }
   //can deallocate res now
-  igraph_vector_ptr_destroy( &res );
+  igraph_vector_ptr_destroy_all( &res );
   igraph_vector_destroy( &vRankOrder );
    
   cerr << "Merging local sketches to global..." 
