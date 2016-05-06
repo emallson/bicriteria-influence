@@ -181,7 +181,7 @@ public:
 			G_i,
 			&res,
 			vs,
-			n,
+			4,
 			IGRAPH_IN );
 
     
@@ -444,13 +444,17 @@ void influence_oracles::compute_oracles_online_init() {
   //the graphs
   
   // create the permutation of size n*ell
-  myint K = n * ell;
+  vector< mypair >::size_type K = ((vector< mypair>::size_type) n) * ((vector< mypair >::size_type) ell );
   vector< mypair > perm;
-  perm.reserve( K );
+
+  cout << "K: " << K << endl;
+
+  //  perm.reserve( K );
+
   for (myint u = 0; u < n; ++u) {
     for (myint i = 0; i < ell; ++i) {
       mypair tmp;
-      tmp.first = u;
+      tmp.first  = u;
       tmp.second = i;
       perm.push_back( tmp );
     }
@@ -459,17 +463,21 @@ void influence_oracles::compute_oracles_online_init() {
   //shuffle the permutation
   random_shuffle( perm.begin(), perm.end() );
 
-  // group ranks by instance
-  // the pairs are in order of rank
+  //group ranks by instance
+  //the pairs are in order of rank
   vector< mypair > emptyInstance;
   instanceRanks.assign( ell, emptyInstance );
 
+  
+
   for (myint r = 1; r <= K; ++r ) {
-    myint i = perm[ r - 1 ].second;
+    myint i = perm.back().second;
     mypair tmp;
     tmp.first = r;
-    tmp.second = perm[ r - 1 ].first;
+    tmp.second = perm.back().first;
     instanceRanks[i].push_back( tmp );
+
+    perm.pop_back();
   }
 
   vector < myint > empty_sketch;
@@ -529,9 +537,6 @@ compute_oracles_online_step(
   igraph_vector_ptr_destroy_all( &res );
   igraph_vector_destroy( &vRankOrder );
    
-  cerr << "Merging local sketches to global..." 
-       << endl;
-
   // merge local_sketches in instance i
   // into the global sketch for each node
   vector< myint > new_sketch;
