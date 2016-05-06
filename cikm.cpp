@@ -70,6 +70,16 @@ void read_params(
   is >> output_filename;
 }
 
+double actual_influence(
+			vector< myint >& seed_set,
+			igraph_t& base_graph,
+			vector< double >& IC,
+			vector< double >& NP,
+			unsigned L ) {
+  return 0.0;
+}
+
+
 
 int main(int argc, char** argv) {
   igraph_t base_graph;
@@ -101,7 +111,7 @@ int main(int argc, char** argv) {
     //read parameters from command line
     string str_params;
     for (unsigned i = 1; i < argc; ++i) {
-      str_params += argv[i];
+      str_params = str_params + " " + argv[i];
     }
     iss.str( str_params );
 
@@ -160,17 +170,6 @@ int main(int argc, char** argv) {
   double delta = 0.5;
   myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
   myint k_cohen = 3 * (myint)( log ( ((double) n) ) );
-
-  ofstream ofile( output_filename.c_str(), 
-		     ofstream::app );
-
-  ofile << beta << ' '
-	<< T << ' '
-	<< alpha << ' '
-	<< ell << ' '
-	<< K << ' '
-	<< int_maxprob << ' '
-	<< ext_maxprob << ' ';
 
   cout << "T = " << T << endl;
   cout << "alpha = " << alpha << endl;
@@ -233,8 +232,26 @@ int main(int argc, char** argv) {
 
   cout << "Size of seed set: " << seed_set.size() << endl;
 
+  //compute "actual" influence of seed set
+  double act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 10000U );
+
   igraph_destroy( &base_graph);
 
+  ofstream ofile( output_filename.c_str(), 
+		     ofstream::app );
+  ofile << n << ' '
+	<< beta << ' '
+	<< T << ' '
+	<< alpha << ' '
+	<< ell << ' '
+	<< K << ' '
+	<< int_maxprob << ' '
+	<< ext_maxprob << ' '
+	<< offset << ' '
+	<< seed_set.size() << ' '
+	<< act_infl << endl;
+
+  ofile.close();
   return 0;
 }
 
