@@ -181,7 +181,7 @@ public:
 			G_i,
 			&res,
 			vs,
-			4,
+			4, //hop=4
 			IGRAPH_IN );
 
     
@@ -471,14 +471,22 @@ void influence_oracles::compute_oracles_online_init() {
   
 
   for (myint r = 1; r <= K; ++r ) {
-    myint i = perm.back().second;
+    myint i = perm[ r - 1 ].second;
     mypair tmp;
     tmp.first = r;
-    tmp.second = perm.back().first;
+    tmp.second = perm[ r - 1 ].first;
     instanceRanks[i].push_back( tmp );
-
-    perm.pop_back();
   }
+
+  // for (myint r = 1; r <= K; ++r ) {
+  //   myint i = perm.back().second;
+  //   mypair tmp;
+  //   tmp.first = r;
+  //   tmp.second = perm.back().first;
+  //   instanceRanks[i].push_back( tmp );
+
+  //   perm.pop_back();
+  // }
 
   vector < myint > empty_sketch;
   global_sketches.assign( n, empty_sketch );
@@ -520,7 +528,7 @@ compute_oracles_online_step(
        ++ii ) {
     igraph_vector_t* v;
     //get the nbhd list for the node at this rank
-    v = (igraph_vector_t* ) igraph_vector_ptr_e( &res, i );
+    v = (igraph_vector_t* ) igraph_vector_ptr_e( &res, ii );
     for (myint j = 0; 
          j < igraph_vector_size( v ); 
          ++j) {

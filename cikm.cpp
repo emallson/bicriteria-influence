@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cmath>
 #include <sstream>
+#include <ctime>
 
 using namespace std;
 
@@ -32,6 +33,11 @@ void sample_external_influence( igraph_t& G,
 				vector< myint >& nodes_sampled );
 
 myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood );
+myint forwardBFS( igraph_t* G_i, 
+		  vector< myint >& vseeds, 
+		  vector< myint >& vseeds2,
+		  vector< myint >& v_neighborhood,
+		  int max_distance );
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
                myint k );
@@ -54,6 +60,7 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 		myint k );
 
 void read_params( 
+		 myint& n,
 		 string& graph_filename,
 		 double& beta,
 		 double& alpha,
@@ -63,6 +70,10 @@ void read_params(
 		 istream& is
 		  ) {
   is >> graph_filename;
+  if (graph_filename == "ER") {
+    is >> n;
+  }
+
   is >> beta;
   is >> alpha;
   is >> int_maxprob;
@@ -76,7 +87,38 @@ double actual_influence(
 			vector< double >& IC,
 			vector< double >& NP,
 			unsigned L ) {
-  return 0.0;
+  double activated = 0.0;
+
+  for (unsigned i = 0; i < L; ++i) {
+    if (i % 1 == 0) {
+      cout << "\r                                     \r"
+    	   << ((double) i )/ L * 100 
+    	//	   << i
+    	   << "\% done";
+      cout.flush();
+    }
+
+    igraph_t G_i;
+    sample_independent_cascade( base_graph, IC, G_i );
+    vector< myint > ext_act;
+    sample_external_influence( base_graph, NP, ext_act );
+    
+    vector< myint > v_reach;
+    forwardBFS( &G_i,
+		ext_act,
+		seed_set,
+		v_reach,
+		igraph_vcount( &G_i ) );
+		
+    activated += v_reach.size();
+    //    cout << ext_act.size() + seed_set.size() << ' ' << v_reach.size() << endl;
+
+    igraph_destroy( &G_i );
+  }
+
+  cout << "\r                              \r100% done" << endl;
+
+  return activated / L;
 }
 
 
@@ -115,7 +157,7 @@ int main(int argc, char** argv) {
     }
     iss.str( str_params );
 
-    read_params( graph_filename,
+    read_params( n, graph_filename,
 		 beta,
 		 alpha,
 		 int_maxprob,
@@ -129,32 +171,33 @@ int main(int argc, char** argv) {
       string str_ifile( argv[1] );
       ifile.open( str_ifile.c_str() );
 
-      read_params( graph_filename,
+      read_params( n, graph_filename,
 		   beta,
 		   alpha,
 		   int_maxprob,
 		   ext_maxprob,
 		   output_filename,
-		   iss );
+		   ifile );
+
     }
+
+  }
+  
+  if (graph_filename == "ER") {
+    igraph_erdos_renyi_game(&base_graph, 
+			    IGRAPH_ERDOS_RENYI_GNP, 
+			    n, 2.0 / n,
+			    IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+  } else {
+
+    //    ifstream ifile( bg_filename.c_str());
+    FILE* fp;
+    fp = fopen( graph_filename.c_str(), "r" );
+    //if the graph is undirected
+    igraph_read_graph_edgelist( &base_graph, fp, 0, false ); 
+    fclose( fp );
   }
 
-
-  // if (bg_graph_type == "ER") {
-  //   in_stream >> n;
-  //   igraph_erdos_renyi_game(&base_graph, 
-  //                         IGRAPH_ERDOS_RENYI_GNP, 
-  //                         n, 2.0 / n,
-  //                         IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
-
-
-  //    ifstream ifile( bg_filename.c_str());
-  FILE* fp;
-  fp = fopen( graph_filename.c_str(), "r" );
-  //if the graph is directed
-  igraph_read_graph_edgelist( &base_graph, fp, 0, true ); 
-
-  fclose( fp );
   n = igraph_vcount( &base_graph );
 
   cout << "Base graph read from " << graph_filename
@@ -169,8 +212,9 @@ int main(int argc, char** argv) {
   myint K = 1.0 / (C * alpha);
   double delta = 0.5;
   myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
-  myint k_cohen = 3 * (myint)( log ( ((double) n) ) );
+  myint k_cohen = ell;//25 * (myint)( log ( ((double) n) ) );//ell;//((double) ell);//25 * 
 
+  cout << "k_cohen = " << k_cohen << endl;
   cout << "T = " << T << endl;
   cout << "alpha = " << alpha << endl;
   cout << "beta = " << beta << endl;
@@ -201,6 +245,7 @@ int main(int argc, char** argv) {
   //       			   node_probs,
   //       			   ell );
 
+  clock_t t_start = clock();
   //create the oracles
   influence_oracles my_oracles( ell, k_cohen, n );
 
@@ -210,8 +255,11 @@ int main(int argc, char** argv) {
                                          node_probs,
                                          ell,
                                          my_oracles );
-  cerr << "offset=" << offset << endl;
 
+  clock_t t_finish = clock();
+  double t_oracle = double ( t_finish - t_start ) / CLOCKS_PER_SEC;
+  cerr << "offset=" << offset << endl;
+  
   system("sleep 1");
 
   // cerr << "computing oracles...\n";
@@ -226,15 +274,21 @@ int main(int argc, char** argv) {
   // }
 
   //run the bicriteria alg.
+  t_start = clock();
   vector< myint > seed_set;
   bicriteria( my_oracles, n, T, offset,
 	      seed_set );
 
+  t_finish = clock();
+  double t_bicriteria = double (t_finish - t_start) / CLOCKS_PER_SEC;
+  double t_total = t_oracle + t_bicriteria;
   cout << "Size of seed set: " << seed_set.size() << endl;
-
+  cout << "Finished in: " << t_total << " seconds" << endl;
   //compute "actual" influence of seed set
-  double act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 10000U );
+  cout << "Estimating influence of seed set by Monte Carlo..." << endl;
+  double act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 1000U );
 
+  cout << act_infl << endl;
   igraph_destroy( &base_graph);
 
   ofstream ofile( output_filename.c_str(), 
@@ -249,7 +303,8 @@ int main(int argc, char** argv) {
 	<< ext_maxprob << ' '
 	<< offset << ' '
 	<< seed_set.size() << ' '
-	<< act_infl << endl;
+	<< act_infl << ' ' 
+	<< t_total << endl;
 
   ofile.close();
   return 0;
@@ -323,7 +378,7 @@ void bicriteria( influence_oracles& oracles,
 
     seeds.push_back( next_node );
 
-    est_infl = offset + curr_tau + max_marg + seeds.size();
+    est_infl = offset + curr_tau + max_marg;// + seeds.size();
 
     cerr << est_infl << ' ' << curr_tau << ' ' <<  max_marg << ' ' << next_node << endl;
     cerr << "perm rank " << sketch.back() << endl;
@@ -715,7 +770,9 @@ void sample_external_influence( igraph_t& G,
 
 }
 
-myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood ) {
+myint forwardBFS( igraph_t* G_i, 
+		  vector< myint >& vseeds, 
+		  vector< myint >& v_neighborhood ) {
   queue <myint> Q;
   vector < int > dist;
   myint n = igraph_vcount( G_i );
@@ -764,6 +821,76 @@ myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_nei
     if (dist[i] != -1) {
       //i is reachable from vertex in G_i
       ++count;
+    }
+  }
+
+  return count;
+
+}
+
+myint forwardBFS( igraph_t* G_i, 
+		  vector< myint >& vseeds, 
+		  vector< myint >& vseeds2,
+		  vector< myint >& v_neighborhood,
+		  int max_distance ) {
+  queue <myint> Q;
+  vector < int > dist;
+  myint n = igraph_vcount( G_i );
+  dist.reserve( n );
+  for (myint i = 0; i < n; ++i) {
+    dist.push_back( -1 ); //infinity
+  }
+
+  //  igraph_vector_t v_edges_to_remove;
+  //  igraph_vector_init( &v_edges_to_remove, 0);
+
+  for (myint i = 0; i < vseeds.size(); ++i) {
+    dist[ vseeds[i] ] = 0;
+    Q.push( vseeds[i] );
+    //    igraph_vector_push_back( &v_neighborhood, vseeds[i] );
+    v_neighborhood.push_back( vseeds[i] );
+  }
+
+  for (myint i = 0; i < vseeds2.size(); ++i) {
+    if (dist[ vseeds2[i] ] != 0) {
+      dist[ vseeds2[i] ] = 0;
+      Q.push( vseeds2[i] );
+      v_neighborhood.push_back( vseeds2[i] );
+    }
+  }
+
+  while (!(Q.empty())) {
+
+    myint current = Q.front();
+    Q.pop();
+    //get forwards neighbors of current
+    igraph_vector_t neis;
+    igraph_vector_init( &neis, 0 );
+    igraph_neighbors( G_i, &neis, current, IGRAPH_OUT );
+    for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
+      myint aneigh = VECTOR( neis )[i];
+      if (dist[ aneigh ] == -1 ) { //if aneigh hasn't been discovered yet
+	dist[ aneigh ] = dist[ current ] + 1;
+	Q.push( aneigh );
+	//	igraph_vector_push_back( &v_neighborhood, aneigh );
+	v_neighborhood.push_back( aneigh );
+
+	//flag this edge for removal from the graph
+	//	myint eid;
+	//	igraph_get_eid( G_i, &eid, current, 
+      }
+    }
+
+    igraph_vector_destroy( &neis );
+  } //BFS finished
+
+  myint count = 0;
+  for (myint i = 0; i < n; ++i) {
+    if (dist[i] != -1) {
+      if (dist[i] <= max_distance) {
+	//i is reachable from vertex in G_i
+	++count;
+      }
     }
   }
 
