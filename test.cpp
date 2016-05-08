@@ -2,6 +2,7 @@
 #include "influence_oracles.cpp"
 #include <iostream>
 #include <ctime>
+#include <limits>
 
 int main() {
   myint n = 100;
@@ -80,5 +81,10 @@ int main() {
 
     cout << endl;
   }
+
+  cout << "float min value: ";
+  cout << numeric_limits<float>::min() << endl;
+  
+  cout << "reciprocal: " << 1.0 / numeric_limits<float>::min() << endl;
 
 }

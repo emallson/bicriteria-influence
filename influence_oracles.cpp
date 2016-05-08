@@ -5,13 +5,17 @@
 #include <algorithm>
 #include <queue>
 #include <iostream>
+#include <pthread.h>
 
 using namespace std;
 typedef igraph_integer_t myint;
+typedef float myreal;
 typedef unordered_set< myint >  uset;
 
 std::random_device rd_or;
 std::mt19937 gen_or(rd_or());
+
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 
 struct mypair {
   myint first;
@@ -20,7 +24,7 @@ struct mypair {
 
 struct npair {
   myint node;
-  double nrank;
+  myreal nrank;
 };
 
 bool mycomp (const npair& n1, const npair& n2 ) {
@@ -38,7 +42,7 @@ public:
   vector< vector< mypair > > instanceRanks;
 
   
-  vector< vector< double > > uniform_global_sketches;
+  vector< vector< myreal > > uniform_global_sketches;
 
   void compute_oracles();
   void alt_compute_oracles();
@@ -51,55 +55,55 @@ public:
   void compute_uniform_oracles_online_step( igraph_t* H_i,
 					    myint i );
 
-  double estimate_reachability_sketch( vector< myint >& asketch ) {
-    double uniform_rank;
-    double estimate;
+  myreal estimate_reachability_sketch( vector< myint >& asketch ) {
+    myreal uniform_rank;
+    myreal estimate;
     if (asketch.size() == k) {
       myint T = asketch.back();
-      uniform_rank = ((double) T - 1.0)/(ell * n - 1.0 );
-      estimate = ((double) k - 1)/ uniform_rank;
+      uniform_rank = ((myreal) T - 1.0)/(ell * n - 1.0 );
+      estimate = ((myreal) k - 1)/ uniform_rank;
     }
     else {
-      estimate = ((double) asketch.size());
+      estimate = ((myreal) asketch.size());
     }
       
     
-    //double estimate = 1.0 + 
-    //      ((double)(k - 1)*(n*ell - 1)) / (T - 1);
+    //myreal estimate = 1.0 + 
+    //      ((myreal)(k - 1)*(n*ell - 1)) / (T - 1);
 
     return estimate / ell;
 
   }
 
-  double estimate_reachability_uniform_sketch( vector< double >& asketch ) {
-    double uniform_rank;
-    double estimate;
+  myreal estimate_reachability_uniform_sketch( vector< myreal >& asketch ) {
+    myreal uniform_rank;
+    myreal estimate;
     if (asketch.size() == k) {
       uniform_rank = asketch.back();
-      estimate = ((double) k - 1)/ uniform_rank;
+      estimate = ((myreal) k - 1)/ uniform_rank;
     }
     else {
       estimate = asketch.size();
     }
       
     
-    //double estimate = 1.0 + 
-    //      ((double)(k - 1)*(n*ell - 1)) / (T - 1);
+    //myreal estimate = 1.0 + 
+    //      ((myreal)(k - 1)*(n*ell - 1)) / (T - 1);
 
     return estimate / ell;
 
   }
 
-  double estimate_reachability( myint vertex ) {
-    double uniform_rank;
-    double estimate;
+  myreal estimate_reachability( myint vertex ) {
+    myreal uniform_rank;
+    myreal estimate;
     if (global_sketches[ vertex ].size() == k) {
       myint T = global_sketches[ vertex ].back();
-      uniform_rank = ((double) T - 1.0)/(ell * n - 1.0 );
-      estimate = ((double) k - 1)/ uniform_rank;
+      uniform_rank = ((myreal) T - 1.0)/(ell * n - 1.0 );
+      estimate = ((myreal) k - 1)/ uniform_rank;
     }
     else {
-      estimate = ((double) global_sketches[vertex].size());
+      estimate = ((myreal) global_sketches[vertex].size());
     }
       
 
@@ -107,20 +111,20 @@ public:
 
 
     
-    //double estimate = 1.0 + 
-    //      ((double)(k - 1)*(n*ell - 1)) / (T - 1);
+    //myreal estimate = 1.0 + 
+    //      ((myreal)(k - 1)*(n*ell - 1)) / (T - 1);
 
     return estimate / ell;
   }
 
-  double average_reachability( myint vertex ) {
+  myreal average_reachability( myint vertex ) {
     myint tot_reach = 0;
     for (myint i = 0; i < ell; ++i) {
       tot_reach += forwardBFS( v_instances[i], vertex );
 
     }
 
-    return ((double) tot_reach) / ell;
+    return ((myreal) tot_reach) / ell;
   }
 
   void merge_sketches(vector< myint >& sketch_1, vector< myint >& sketch_2, 
@@ -534,7 +538,7 @@ void influence_oracles::compute_oracles_online_init() {
 void influence_oracles::compute_uniform_oracles_online_init() {
   //uniform version is a lot simpler
 
-  vector < double > empty_sketch;
+  vector < myreal > empty_sketch;
   uniform_global_sketches.assign( n, empty_sketch );
 
 }
@@ -544,8 +548,8 @@ compute_uniform_oracles_online_step(
 				    igraph_t* H_i,
 				    myint i
 				    ) {
-  vector < vector< double > > local_sketches;
-  vector < double > empty_sketch;
+  vector < vector< myreal > > local_sketches;
+  vector < myreal > empty_sketch;
   local_sketches.assign( n, empty_sketch );
 
   vector < npair > ranks_i;
@@ -605,10 +609,13 @@ compute_uniform_oracles_online_step(
   IGRAPH_VECTOR_PTR_SET_ITEM_DESTRUCTOR( &res, &igraph_vector_destroy );
   igraph_vector_ptr_destroy_all( &res );
   igraph_vector_destroy( &vRankOrder );
-   
+
+  //get the lock first
+  pthread_mutex_lock( &mutex1 );
+
   // merge local_sketches in instance i
   // into the global sketch for each node
-  vector< double > new_sketch;
+  vector< myreal > new_sketch;
   for (myint u = 0; u < n; ++u) {
     new_sketch.assign( local_sketches[u].size()
                        + uniform_global_sketches[u].size(),
@@ -626,6 +633,9 @@ compute_uniform_oracles_online_step(
 
     uniform_global_sketches[u].swap( new_sketch );
   }
+
+  //and unlock 
+  pthread_mutex_unlock( &mutex1 );
 
 }
 
@@ -683,6 +693,8 @@ compute_oracles_online_step(
    
   // merge local_sketches in instance i
   // into the global sketch for each node
+  //get the lock first
+  pthread_mutex_lock( &mutex1 );
   vector< myint > new_sketch;
   for (myint u = 0; u < n; ++u) {
     new_sketch.assign( local_sketches[u].size()
@@ -702,6 +714,7 @@ compute_oracles_online_step(
     global_sketches[u].swap( new_sketch );
   }
 
+  pthread_mutex_unlock( &mutex1 );
 }
 
 

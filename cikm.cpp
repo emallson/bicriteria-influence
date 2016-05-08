@@ -8,6 +8,7 @@
 #include <cmath>
 #include <sstream>
 #include <ctime>
+#include <pthread.h>
 
 using namespace std;
 
@@ -15,21 +16,37 @@ using namespace std;
 std::random_device rd;
 std::mt19937 gen(rd());
 
+//global thread variables
+#define NTHREADS 3
+
+igraph_t base_graph;
+string graph_filename;
+myint n;
+myreal beta;
+myreal alpha;
+myreal int_maxprob;
+myreal ext_maxprob;
+string output_filename;
+vector< myreal > IC_weights;
+vector< myreal> node_probs;
+myint ell;
+influence_oracles my_oracles( 0, 0, 0 );
+
 //function prototypes
-void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights,
-				    double int_maxprob);
-void construct_external_influence( igraph_t& G, vector< double >& node_probs, double max_prob );
-double construct_reachability_instance( igraph_t& G, 
+void construct_independent_cascade( igraph_t& G, vector< myreal >& edge_weights,
+				    myreal int_maxprob);
+void construct_external_influence( igraph_t& G, vector< myreal >& node_probs, myreal max_prob );
+myreal construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
-				      vector< double >& IC, //IC weights
-				      vector< double >& NP, //Node probabilities
+				      vector< myreal >& IC, //IC weights
+				      vector< myreal >& NP, //Node probabilities
 				      myint ell );
 void sample_independent_cascade( igraph_t& G, 
-				 vector< double >& edgne_weights, 
+				 vector< myreal >& edgne_weights, 
 				 igraph_t& sample_graph );
 
 void sample_external_influence( igraph_t& G, 
-				vector< double >& node_probs, 
+				vector< myreal >& node_probs, 
 				vector< myint >& nodes_sampled );
 
 myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood );
@@ -41,22 +58,18 @@ myint forwardBFS( igraph_t* G_i,
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
                myint k );
-void my_merge( vector< double >& sk1, vector< double >& sk2,
-	       vector< double >& res_sk, 
+void my_merge( vector< myreal >& sk1, vector< myreal >& sk2,
+	       vector< myreal >& res_sk, 
                myint k );
 
-double compute_oracles_online( igraph_t& G,
-                               vector< double >& IC,
-                               vector< double >& NP,
-                               myint ell,
-                               influence_oracles& O);
+void* compute_oracles_online( void * );
 
-void print_sketch( vector< double >& sk1 );
+void print_sketch( vector< myreal >& sk1 );
 
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  myint T,
-                 double offset,
+                 myreal offset,
 		 //out parameters
 		 vector< myint >& seeds);
 
@@ -67,10 +80,10 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 void read_params( 
 		 myint& n,
 		 string& graph_filename,
-		 double& beta,
-		 double& alpha,
-		 double& int_maxprob,
-		 double& ext_maxprob,
+		 myreal& beta,
+		 myreal& alpha,
+		 myreal& int_maxprob,
+		 myreal& ext_maxprob,
 		 string& output_filename,
 		 istream& is
 		  ) {
@@ -86,18 +99,18 @@ void read_params(
   is >> output_filename;
 }
 
-double actual_influence(
+myreal actual_influence(
 			vector< myint >& seed_set,
 			igraph_t& base_graph,
-			vector< double >& IC,
-			vector< double >& NP,
+			vector< myreal >& IC,
+			vector< myreal >& NP,
 			unsigned L ) {
-  double activated = 0.0;
+  myreal activated = 0.0;
 
   for (unsigned i = 0; i < L; ++i) {
     if (i % 1 == 0) {
       cout << "\r                                     \r"
-    	   << ((double) i )/ L * 100 
+    	   << ((myreal) i )/ L * 100 
     	//	   << i
     	   << "\% done";
       cout.flush();
@@ -129,15 +142,6 @@ double actual_influence(
 
 
 int main(int argc, char** argv) {
-  igraph_t base_graph;
-  string graph_filename;
-  myint n;
-  double beta;
-  double alpha;
-  double int_maxprob;
-  double ext_maxprob;
-  string output_filename;
-
   if (argc < 2) {
     cerr << "Usage: " << argv[0] << " <input filename>\n";
     cerr << "or usage: "
@@ -215,11 +219,11 @@ int main(int argc, char** argv) {
   T = beta * n;
   myint C = 2;
   myint K = 1.0 / (C * alpha);
-  double delta = 0.5;
-  myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
+  myreal delta = 0.5;
+  ell = log( 2 / delta ) / (alpha * alpha) / 2;
   myint k_cohen = ell / 3.0;//25 * (myint)( log ( ((double) n) ) );//ell / 2.0;//25 * ;//ell;//((double) ell);//25 * 
 
-  double epsilon = alpha * n;
+  myreal epsilon = alpha * n;
   cout << "epsilon = " << epsilon << endl;
   cout << "k_cohen = " << k_cohen << endl;
   cout << "T = " << T << endl;
@@ -230,13 +234,19 @@ int main(int argc, char** argv) {
   cout << "int_maxprob = " << int_maxprob << endl;
   cout << "ext_maxprob = " << ext_maxprob << endl;
 
+  cout << "Minimum memory required: " 
+       << k_cohen << 'x'
+       << sizeof( myreal ) << 'x'
+       << n << " = " << k_cohen * sizeof( myreal ) * n / 1000000.0 
+       << " MB" << endl;
+    
+
   system("sleep 2");
 
   cout << "Constructing the IC model..." << endl;
-  vector< double > IC_weights;
+
   construct_independent_cascade( base_graph, IC_weights, int_maxprob );
 
-  vector< double> node_probs;
   //this is a simple model of external influence
   cout << "Constructing external influence..." << endl;
   construct_external_influence( base_graph, node_probs, ext_maxprob );
@@ -254,18 +264,27 @@ int main(int argc, char** argv) {
 
   clock_t t_start = clock();
   //create the oracles
-  influence_oracles my_oracles( ell, k_cohen, n );
+  my_oracles.n = n;
+  my_oracles.ell = ell;
+  my_oracles.k = k_cohen;
+  my_oracles.compute_uniform_oracles_online_init();
 
-  double offset = compute_oracles_online(
-                                         base_graph,
-                                         IC_weights,
-                                         node_probs,
-                                         ell,
-                                         my_oracles );
+  myint ell_tmp = ((double) ell) / NTHREADS;
+  myreal offset = 0.0;
+
+  pthread_t mythreads[ NTHREADS ];
+  for (unsigned i = 0; i < NTHREADS; ++i) {
+    pthread_create( &( mythreads[i] ), NULL, compute_oracles_online, &ell_tmp );
+    
+  }
+
+  for (unsigned i = 0; i < NTHREADS; ++i) {
+    pthread_join( mythreads[i] , NULL );
+    
+  }
 
   clock_t t_finish = clock();
-  double t_oracle = double ( t_finish - t_start ) / CLOCKS_PER_SEC;
-  cerr << "offset=" << offset << endl;
+  myreal t_oracle = myreal ( t_finish - t_start ) / CLOCKS_PER_SEC;
 
   //  print_sketch( my_oracles.uniform_global_sketches[0] );
   
@@ -289,13 +308,13 @@ int main(int argc, char** argv) {
 	      seed_set );
 
   t_finish = clock();
-  double t_bicriteria = double (t_finish - t_start) / CLOCKS_PER_SEC;
-  double t_total = t_oracle + t_bicriteria;
+  myreal t_bicriteria = myreal (t_finish - t_start) / CLOCKS_PER_SEC;
+  myreal t_total = t_oracle + t_bicriteria;
   cout << "Size of seed set: " << seed_set.size() << endl;
   cout << "Finished in: " << t_total << " seconds" << endl;
   //compute "actual" influence of seed set
   cout << "Estimating influence of seed set by Monte Carlo..." << endl;
-  double act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 1000U );
+  myreal act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 1000U );
 
   cout << act_infl << endl;
   igraph_destroy( &base_graph);
@@ -328,7 +347,7 @@ void print_sketch( vector< myint >& sk1 ) {
   cout << endl;
 }
 
-void print_sketch( vector< double >& sk1 ) {
+void print_sketch( vector< myreal >& sk1 ) {
   for (myint i = 0; i < sk1.size(); ++i) {
     cout << sk1[i] << ' ';
   }
@@ -339,21 +358,21 @@ void print_sketch( vector< double >& sk1 ) {
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  myint T,
-                 double offset,
+                 myreal offset,
 		 //out parameters
 		 vector< myint >& seeds) {
   cerr << "offset = " << offset << endl;
 
   //  vector< myint > sketch;
-  vector< double > sketch;
+  vector< myreal > sketch;
 
-  double est_infl = offset;
-  double max_marg = 0.0;
+  myreal est_infl = offset;
+  myreal max_marg = 0.0;
   myint next_node = 0;
-  double curr_tau = 0.0;
+  myreal curr_tau = 0.0;
 
   //  vector< myint > tmp_sketch;
-  vector< double > tmp_sketch;
+  vector< myreal > tmp_sketch;
   while (est_infl < T ) {
 
     //select the node with the max. marginal gain
@@ -366,7 +385,7 @@ void bicriteria( influence_oracles& oracles,
       //tmp_sketch = merge( sketch, sketch_u )
       my_merge( sketch, oracles.uniform_global_sketches[ u ], tmp_sketch, oracles.k );
       
-      double tmp_marg = oracles.estimate_reachability_uniform_sketch( tmp_sketch ) - curr_tau;
+      myreal tmp_marg = oracles.estimate_reachability_uniform_sketch( tmp_sketch ) - curr_tau;
       if (tmp_marg > max_marg) {
 	max_marg = tmp_marg;
 	next_node = u;
@@ -504,13 +523,13 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
 
 }
-void my_merge( vector< double >& sk1, vector< double >& sk2,
-	       vector< double >& res_sk, 
+void my_merge( vector< myreal >& sk1, vector< myreal >& sk2,
+	       vector< myreal >& res_sk, 
                myint k ) {
   //	       , vector< myint >& seeds ) {
 
-  vector< double >::iterator it1 = sk1.begin();
-  vector< double >::iterator it2 = sk2.begin();
+  vector< myreal >::iterator it1 = sk1.begin();
+  vector< myreal >::iterator it2 = sk2.begin();
 
   myint l = k;
   if (l > (sk1.size() + sk2.size())) {
@@ -518,7 +537,7 @@ void my_merge( vector< double >& sk1, vector< double >& sk2,
   }
 
   res_sk.assign( l, 0 );
-  vector< double >::iterator res_it = res_sk.begin();
+  vector< myreal >::iterator res_it = res_sk.begin();
 
   myint s = 0; //size
 
@@ -565,18 +584,20 @@ void my_merge( vector< double >& sk1, vector< double >& sk2,
 //takes place of 'construct_reachability_instance'
 //does not store any of the reachability graphs
 //works with the oracle online functions
-double compute_oracles_online( igraph_t& G,
-                               vector< double >& IC,
-                               vector< double >& NP,
-                               myint ell,
-                               influence_oracles& O) {
-  O.compute_uniform_oracles_online_init();
+void *compute_oracles_online( void* ptr ) {
+  igraph_t& G = base_graph;
+  vector< myreal >& IC = IC_weights;
+  vector< myreal >& NP = node_probs;
+  influence_oracles& O = my_oracles;
+
+  myint N = *( (myint*) ptr );
+
   myint n = igraph_vcount( &G );
-  double offset = 0.0;
-  for (myint i = 0; i < ell; ++i) {
+  myreal offset = 0.0;
+  for (myint i = 0; i < N; ++i) {
     if (i % 1 == 0) {
       cout << "\r                                     \r"
-	   << ((double) i )/ ell * 100 
+	   << ((myreal) i )/ N * 100 
 	//	   << i
 	   << "\% done";
       cout.flush();
@@ -632,25 +653,25 @@ double compute_oracles_online( igraph_t& G,
 
   cout << "\r                               \r100% done" << endl;
 
-  return offset / ell;
+  //  return offset / ell;
 
 }
 
 
-double construct_reachability_instance( igraph_t& G, 
+myreal construct_reachability_instance( igraph_t& G, 
 				      vector< igraph_t* >& vgraphs,
-				      vector< double >& IC, //IC weights
-				      vector< double >& NP, //Node probabilities
+				      vector< myreal >& IC, //IC weights
+				      vector< myreal >& NP, //Node probabilities
 				      myint ell ) {
   //create a gen. reachability instance
   vgraphs.clear();
 
   myint n = igraph_vcount( &G );
-  double offset = 0.0;
+  myreal offset = 0.0;
   for (myint i = 0; i < ell; ++i) {
     if (i % 1 == 0) {
       cerr << "\r                                     \r"
-	   << ((double) i )/ ell * 100 
+	   << ((myreal) i )/ ell * 100 
 	//	   << i
 	   << "\% done";
     }
@@ -744,7 +765,7 @@ int test_estimation()
 
 
 
-void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights, double int_maxprob) {
+void construct_independent_cascade( igraph_t& G, vector< myreal >& edge_weights, myreal int_maxprob) {
   edge_weights.clear();
 
   std::uniform_real_distribution<> dis(0, int_maxprob);
@@ -757,7 +778,7 @@ void construct_independent_cascade( igraph_t& G, vector< double >& edge_weights,
 
 }
 
-void construct_external_influence( igraph_t& G, vector< double >& node_probs, double max_prob ) {
+void construct_external_influence( igraph_t& G, vector< myreal >& node_probs, myreal max_prob ) {
   node_probs.clear();
   myint n = igraph_vcount( &G );
   std::uniform_real_distribution<> dis(0, max_prob );
@@ -767,7 +788,7 @@ void construct_external_influence( igraph_t& G, vector< double >& node_probs, do
   }
 }
 
-void sample_independent_cascade( igraph_t& G, vector< double >& edge_weights, igraph_t& sample_graph ) {
+void sample_independent_cascade( igraph_t& G, vector< myreal >& edge_weights, igraph_t& sample_graph ) {
   
   igraph_copy( &sample_graph, &G );
 
@@ -775,7 +796,7 @@ void sample_independent_cascade( igraph_t& G, vector< double >& edge_weights, ig
 
   myint m = igraph_ecount( &G );
 
-  double cvalue;
+  myreal cvalue;
   igraph_vector_t edges_to_delete;
   igraph_vector_init( &edges_to_delete, 0L );
   igraph_vector_reserve( &edges_to_delete, m );
@@ -803,7 +824,7 @@ void sample_independent_cascade( igraph_t& G, vector< double >& edge_weights, ig
 }
 
 void sample_external_influence( igraph_t& G, 
-				vector< double >& node_probs, 
+				vector< myreal >& node_probs, 
 				vector< myint >& nodes_sampled ) {
   
 
@@ -811,7 +832,7 @@ void sample_external_influence( igraph_t& G,
 
   myint n = igraph_vcount( &G );
 
-  double cvalue;
+  myreal cvalue;
 
   nodes_sampled.clear();
 

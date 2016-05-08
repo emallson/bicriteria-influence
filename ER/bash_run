@@ -1,12 +1,12 @@
-step="0.01"
 init="0.01"
-final="0.2"
+step="0.001"
+final="0.02"
 
 n="1000"
 beta="0.4"
 ip="1"
 ep="0"
-of="run9_uniform_opt"
+of="run10_float"
 if="ER"
 
 for (( i=0; $i<$(bc<<<"($final - $init)/$step"); i++ )); do

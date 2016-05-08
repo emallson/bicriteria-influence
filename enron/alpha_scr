@@ -5,7 +5,7 @@ final="0.01"
 beta="0.1"
 ip="0.01"
 ep="0.0001"
-of="run8_alpha"
+of="run9_alpha"
 if="igraph_enron.txt"
 
 for (( i=0; $i<$(bc<<<"($final - $init)/$step"); i++ )); do
