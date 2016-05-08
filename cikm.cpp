@@ -51,6 +51,8 @@ double compute_oracles_online( igraph_t& G,
                                myint ell,
                                influence_oracles& O);
 
+void print_sketch( vector< double >& sk1 );
+
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  myint T,
@@ -264,6 +266,8 @@ int main(int argc, char** argv) {
   clock_t t_finish = clock();
   double t_oracle = double ( t_finish - t_start ) / CLOCKS_PER_SEC;
   cerr << "offset=" << offset << endl;
+
+  //  print_sketch( my_oracles.uniform_global_sketches[0] );
   
   system("sleep 1");
 
@@ -324,6 +328,14 @@ void print_sketch( vector< myint >& sk1 ) {
   cout << endl;
 }
 
+void print_sketch( vector< double >& sk1 ) {
+  for (myint i = 0; i < sk1.size(); ++i) {
+    cout << sk1[i] << ' ';
+  }
+
+  cout << endl;
+}
+
 void bicriteria( influence_oracles& oracles, 
                  myint n, 
                  myint T,
@@ -336,7 +348,7 @@ void bicriteria( influence_oracles& oracles,
   vector< double > sketch;
 
   double est_infl = offset;
-    double max_marg = 0.0;
+  double max_marg = 0.0;
   myint next_node = 0;
   double curr_tau = 0.0;
 

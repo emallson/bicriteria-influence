@@ -23,7 +23,7 @@ struct npair {
   double nrank;
 };
 
-bool mycomp (npair n1, npair n2 ) {
+bool mycomp (const npair& n1, const npair& n2 ) {
   return n1.nrank < n2.nrank;
 }
 
@@ -79,7 +79,7 @@ public:
       estimate = ((double) k - 1)/ uniform_rank;
     }
     else {
-      estimate = 1.0;
+      estimate = asketch.size();
     }
       
     
@@ -598,7 +598,7 @@ compute_uniform_oracles_online_step(
       //push the rank of the ii'th node
       //onto the sketch of aa
       if (local_sketches[aa].size() < k)
-        local_sketches[aa].push_back( ranks_i[j].nrank );
+        local_sketches[aa].push_back( ranks_i[ ii ].nrank );
     }
   }
   //can deallocate res now
@@ -608,23 +608,23 @@ compute_uniform_oracles_online_step(
    
   // merge local_sketches in instance i
   // into the global sketch for each node
-  vector< myint > new_sketch;
+  vector< double > new_sketch;
   for (myint u = 0; u < n; ++u) {
     new_sketch.assign( local_sketches[u].size()
-                       + global_sketches[u].size(),
+                       + uniform_global_sketches[u].size(),
                        0
                        );
 
     merge( local_sketches[u].begin(),
            local_sketches[u].end(),
-           global_sketches[u].begin(),
-           global_sketches[u].end(),
+           uniform_global_sketches[u].begin(),
+           uniform_global_sketches[u].end(),
            new_sketch.begin() );
 
     if (new_sketch.size() > k)
       new_sketch.resize( k );
 
-    global_sketches[u].swap( new_sketch );
+    uniform_global_sketches[u].swap( new_sketch );
   }
 
 }
