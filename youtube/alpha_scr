@@ -1,0 +1,15 @@
+step="0.01"
+init="0.01"
+final="0.2"
+
+beta="0.3"
+ip="0.2"
+ep="0.00001"
+of="run3_alpha_uni"
+if="igraph_youtube.txt"
+
+for (( i=0; $i<$(bc<<<"($final - $init)/$step"); i++ )); do
+    alpha=$(bc<<<"$init + $step * $i ")
+    echo "cikm $if $beta $alpha $ip $ep $of"
+    cikm $if $beta $alpha $ip $ep $of
+done
