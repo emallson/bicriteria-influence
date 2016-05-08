@@ -41,6 +41,9 @@ myint forwardBFS( igraph_t* G_i,
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
                myint k );
+void my_merge( vector< double >& sk1, vector< double >& sk2,
+	       vector< double >& res_sk, 
+               myint k );
 
 double compute_oracles_online( igraph_t& G,
                                vector< double >& IC,
@@ -212,8 +215,10 @@ int main(int argc, char** argv) {
   myint K = 1.0 / (C * alpha);
   double delta = 0.5;
   myint ell = log( 2 / delta ) / (alpha * alpha) / 2;
-  myint k_cohen = ell;//25 * (myint)( log ( ((double) n) ) );//ell;//((double) ell);//25 * 
+  myint k_cohen = ell / 3.0;//25 * (myint)( log ( ((double) n) ) );//ell / 2.0;//25 * ;//ell;//((double) ell);//25 * 
 
+  double epsilon = alpha * n;
+  cout << "epsilon = " << epsilon << endl;
   cout << "k_cohen = " << k_cohen << endl;
   cout << "T = " << T << endl;
   cout << "alpha = " << alpha << endl;
@@ -297,8 +302,9 @@ int main(int argc, char** argv) {
 	<< beta << ' '
 	<< T << ' '
 	<< alpha << ' '
+	<< epsilon << ' '
 	<< ell << ' '
-	<< K << ' '
+	<< k_cohen << ' '
 	<< int_maxprob << ' '
 	<< ext_maxprob << ' '
 	<< offset << ' '
@@ -326,55 +332,37 @@ void bicriteria( influence_oracles& oracles,
 		 vector< myint >& seeds) {
   cerr << "offset = " << offset << endl;
 
-  vector< myint > sketch;
-  vector< vector < myint > > track_sketches;
-
+  //  vector< myint > sketch;
+  vector< double > sketch;
 
   double est_infl = offset;
     double max_marg = 0.0;
   myint next_node = 0;
   double curr_tau = 0.0;
 
-  vector< myint > tmp_sketch;
+  //  vector< myint > tmp_sketch;
+  vector< double > tmp_sketch;
   while (est_infl < T ) {
-    track_sketches.push_back( sketch );
+
     //select the node with the max. marginal gain
     //for each u
 
     max_marg = 0.0;
-    curr_tau = oracles.estimate_reachability_sketch( sketch );
+    //    curr_tau = oracles.estimate_reachability_sketch( sketch );
+    curr_tau = oracles.estimate_reachability_uniform_sketch( sketch );
     for (myint u = 0; u < n; ++u) {
       //tmp_sketch = merge( sketch, sketch_u )
-      my_merge( sketch, oracles.global_sketches[ u ], tmp_sketch, oracles.k );
+      my_merge( sketch, oracles.uniform_global_sketches[ u ], tmp_sketch, oracles.k );
       
-      double tmp_marg = oracles.estimate_reachability_sketch( tmp_sketch ) - curr_tau;
+      double tmp_marg = oracles.estimate_reachability_uniform_sketch( tmp_sketch ) - curr_tau;
       if (tmp_marg > max_marg) {
 	max_marg = tmp_marg;
 	next_node = u;
       }
     }
 
-    //pick the max. one, update sketch
-    // cout << "Merging sketches:\n";
-    // print_sketch( sketch );
-    // print_sketch( oracles.global_sketches[ next_node ] );
-    my_merge( sketch, oracles.global_sketches[ next_node ], tmp_sketch, oracles.k );
+    my_merge( sketch, oracles.uniform_global_sketches[ next_node ], tmp_sketch, oracles.k );
     sketch.swap( tmp_sketch );
-    // cout << "to get sketch:\n";
-    // print_sketch( sketch );
-
-    //    print_sketch( oracles.global_sketches[ next_node ] );
-    // for (myint jj = 0; jj < track_sketches.size(); ++jj) {
-    //   my_merge( track_sketches[jj], oracles.global_sketches[ next_node ], tmp_sketch, oracles.k );
-      // cout << "tau_init: " << oracles.estimate_reachability_sketch( track_sketches[jj] )
-      // 	   << " tau_addu: " << oracles.estimate_reachability_sketch( tmp_sketch )
-      // 	   << " margin: " << oracles.estimate_reachability_sketch( tmp_sketch ) - 
-      // 	oracles.estimate_reachability_sketch( track_sketches[jj] )
-      // 	   << endl;
-
-      //      print_sketch( track_sketches[jj] );
-      //      print_sketch( tmp_sketch );
-    //   }
 
     seeds.push_back( next_node );
 
@@ -504,6 +492,63 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
 
 }
+void my_merge( vector< double >& sk1, vector< double >& sk2,
+	       vector< double >& res_sk, 
+               myint k ) {
+  //	       , vector< myint >& seeds ) {
+
+  vector< double >::iterator it1 = sk1.begin();
+  vector< double >::iterator it2 = sk2.begin();
+
+  myint l = k;
+  if (l > (sk1.size() + sk2.size())) {
+    l = sk1.size() + sk2.size();
+  }
+
+  res_sk.assign( l, 0 );
+  vector< double >::iterator res_it = res_sk.begin();
+
+  myint s = 0; //size
+
+  while (s < l) {
+    //add the smallest next one
+    if (it1 != sk1.end()) {
+      if (it2 != sk2.end()) {
+	if ( (*it1) < (*it2) ) {
+	  (*res_it) = (*it1);
+	  ++it1;
+	} else {
+	  if ( (*it1) > (*it2) ) {
+	    (*res_it) = (*it2);
+	    ++it2;
+	  } else {
+	    //the values are equal
+	    //but we can only have
+	    //an element appear once
+	    //so insert it, and increment both
+	    (*res_it) = (*it1);
+	    ++it1;
+	    ++it2;
+	  }
+	}
+      } else { //we're done with sketch2.
+	//just add from sk1
+	(*res_it) = (*it1);
+	++it1;
+      }
+    } else {
+      //done with sk1,
+      //add from sk2
+      (*res_it) = (*it2);
+      ++it2;
+    }
+
+    ++res_it;
+    ++s;
+  }
+
+
+}
 
 //takes place of 'construct_reachability_instance'
 //does not store any of the reachability graphs
@@ -513,7 +558,7 @@ double compute_oracles_online( igraph_t& G,
                                vector< double >& NP,
                                myint ell,
                                influence_oracles& O) {
-  O.compute_oracles_online_init();
+  O.compute_uniform_oracles_online_init();
   myint n = igraph_vcount( &G );
   double offset = 0.0;
   for (myint i = 0; i < ell; ++i) {
@@ -569,7 +614,7 @@ double compute_oracles_online( igraph_t& G,
     //use it for the oracle computation,
     //but do then discard it
 
-    O.compute_oracles_online_step( &G_i, i );
+    O.compute_uniform_oracles_online_step( &G_i, i );
     igraph_destroy( &G_i );
   }
 
