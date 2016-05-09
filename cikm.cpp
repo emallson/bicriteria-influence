@@ -76,7 +76,8 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 	       vector< myint >& res_sk, 
 		myint k );
 
-void read_params( 
+void read_params(
+		 bool& bdir,
 		 myint& n,
 		 unsigned& nthreads,
 		 string& graph_filename,
@@ -98,6 +99,13 @@ void read_params(
   is >> ext_maxprob;
   is >> output_filename;
   is >> nthreads;
+  string sdir;
+  is >> sdir;
+  if (sdir == "true") {
+    bdir = true;
+  } else {
+    bdir = false;
+  }
 }
 
 myreal actual_influence(
@@ -153,7 +161,8 @@ int main(int argc, char** argv) {
 	 << " <int_maxprob>"
 	 << " <ext_maxprob>"
 	 << " <output filename>"
-      	 << " <nthreads>\n";
+      	 << " <nthreads>"
+	 << " <is_directed>\n";
     return 1;
   }
 
@@ -161,6 +170,7 @@ int main(int argc, char** argv) {
   istringstream iss;
 
   unsigned nthreads;
+  bool bdir;
 
   if (argc > 2) {
     //read parameters from command line
@@ -170,7 +180,8 @@ int main(int argc, char** argv) {
     }
     iss.str( str_params );
 
-    read_params( n, nthreads, graph_filename,
+    read_params( bdir, 
+		n, nthreads, graph_filename,
 		 beta,
 		 alpha,
 		 int_maxprob,
@@ -184,7 +195,8 @@ int main(int argc, char** argv) {
       string str_ifile( argv[1] );
       ifile.open( str_ifile.c_str() );
 
-      read_params( n, nthreads, graph_filename,
+      read_params( bdir, 
+		   n, nthreads, graph_filename,
 		   beta,
 		   alpha,
 		   int_maxprob,
@@ -207,14 +219,21 @@ int main(int argc, char** argv) {
     FILE* fp;
     fp = fopen( graph_filename.c_str(), "r" );
     //if the graph is undirected
-    igraph_read_graph_edgelist( &base_graph, fp, 0, false ); 
+    igraph_read_graph_edgelist( &base_graph, fp, 0, bdir ); 
     fclose( fp );
   }
 
   n = igraph_vcount( &base_graph );
 
   cout << "Base graph read from " << graph_filename
-       << "..." << endl;
+       << "...";
+
+  if (bdir)
+    cout << "is directed.";
+  else
+    cout << "is undirected.";
+      
+  cout << endl;
 
   
   cout << "n = " << n << endl;
