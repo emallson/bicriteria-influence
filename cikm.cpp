@@ -17,7 +17,6 @@ std::random_device rd;
 std::mt19937 gen(rd());
 
 //global thread variables
-#define NTHREADS 3
 
 igraph_t base_graph;
 string graph_filename;
@@ -79,6 +78,7 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 
 void read_params( 
 		 myint& n,
+		 unsigned& nthreads,
 		 string& graph_filename,
 		 myreal& beta,
 		 myreal& alpha,
@@ -97,6 +97,7 @@ void read_params(
   is >> int_maxprob;
   is >> ext_maxprob;
   is >> output_filename;
+  is >> nthreads;
 }
 
 myreal actual_influence(
@@ -151,12 +152,15 @@ int main(int argc, char** argv) {
 	 << " <alpha>"
 	 << " <int_maxprob>"
 	 << " <ext_maxprob>"
-	 << " <output filename>\n";
+	 << " <output filename>"
+      	 << " <nthreads>\n";
     return 1;
   }
 
   ifstream ifile;
   istringstream iss;
+
+  unsigned nthreads;
 
   if (argc > 2) {
     //read parameters from command line
@@ -166,7 +170,7 @@ int main(int argc, char** argv) {
     }
     iss.str( str_params );
 
-    read_params( n, graph_filename,
+    read_params( n, nthreads, graph_filename,
 		 beta,
 		 alpha,
 		 int_maxprob,
@@ -180,7 +184,7 @@ int main(int argc, char** argv) {
       string str_ifile( argv[1] );
       ifile.open( str_ifile.c_str() );
 
-      read_params( n, graph_filename,
+      read_params( n, nthreads, graph_filename,
 		   beta,
 		   alpha,
 		   int_maxprob,
@@ -222,6 +226,7 @@ int main(int argc, char** argv) {
   myreal delta = 0.5;
   ell = log( 2 / delta ) / (alpha * alpha) / 2;
   myint k_cohen = ell / 3.0;//25 * (myint)( log ( ((double) n) ) );//ell / 2.0;//25 * ;//ell;//((double) ell);//25 * 
+  ell = ell / 3.0;
 
   myreal epsilon = alpha * n;
   cout << "epsilon = " << epsilon << endl;
@@ -269,19 +274,21 @@ int main(int argc, char** argv) {
   my_oracles.k = k_cohen;
   my_oracles.compute_uniform_oracles_online_init();
 
-  myint ell_tmp = ((double) ell) / NTHREADS;
-  myreal offset = 0.0;
+  myint ell_tmp = ((double) ell) / nthreads;
 
-  pthread_t mythreads[ NTHREADS ];
-  for (unsigned i = 0; i < NTHREADS; ++i) {
+
+  pthread_t* mythreads = new pthread_t[ nthreads ];
+  for (unsigned i = 0; i < nthreads; ++i) {
     pthread_create( &( mythreads[i] ), NULL, compute_oracles_online, &ell_tmp );
     
   }
 
-  for (unsigned i = 0; i < NTHREADS; ++i) {
+  for (unsigned i = 0; i < nthreads; ++i) {
     pthread_join( mythreads[i] , NULL );
     
   }
+
+  delete [] mythreads;
 
   clock_t t_finish = clock();
   myreal t_oracle = myreal ( t_finish - t_start ) / CLOCKS_PER_SEC;
@@ -304,6 +311,8 @@ int main(int argc, char** argv) {
   //run the bicriteria alg.
   t_start = clock();
   vector< myint > seed_set;
+
+  myreal offset = my_oracles.offset / my_oracles.ell;
   bicriteria( my_oracles, n, T, offset,
 	      seed_set );
 
@@ -624,7 +633,7 @@ void *compute_oracles_online( void* ptr ) {
 
     forwardBFS( &G_i, ext_act, v_reach );
 
-    offset += v_reach.size();
+    offset = v_reach.size();
   
     for (myint iii = 0; iii < v_reach.size(); ++iii) {
       igraph_incident( &G_i, &v_tmp, v_reach[iii], IGRAPH_ALL );
@@ -647,13 +656,13 @@ void *compute_oracles_online( void* ptr ) {
     //use it for the oracle computation,
     //but do then discard it
 
-    O.compute_uniform_oracles_online_step( &G_i, i );
+    O.compute_uniform_oracles_online_step( &G_i, i, offset );
     igraph_destroy( &G_i );
   }
 
   cout << "\r                               \r100% done" << endl;
 
-  //  return offset / ell;
+
 
 }
 

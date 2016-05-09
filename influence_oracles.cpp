@@ -41,7 +41,7 @@ public:
   vector< vector< myint > > global_sketches;
   vector< vector< mypair > > instanceRanks;
 
-  
+  myreal offset;
   vector< vector< myreal > > uniform_global_sketches;
 
   void compute_oracles();
@@ -53,7 +53,7 @@ public:
 
   void compute_uniform_oracles_online_init();
   void compute_uniform_oracles_online_step( igraph_t* H_i,
-					    myint i );
+					    myint i, myreal offset );
 
   myreal estimate_reachability_sketch( vector< myint >& asketch ) {
     myreal uniform_rank;
@@ -537,7 +537,7 @@ void influence_oracles::compute_oracles_online_init() {
 
 void influence_oracles::compute_uniform_oracles_online_init() {
   //uniform version is a lot simpler
-
+  offset = 0.0;
   vector < myreal > empty_sketch;
   uniform_global_sketches.assign( n, empty_sketch );
 
@@ -546,7 +546,8 @@ void influence_oracles::compute_uniform_oracles_online_init() {
 void influence_oracles::
 compute_uniform_oracles_online_step(
 				    igraph_t* H_i,
-				    myint i
+				    myint i,
+				    myreal offset_in
 				    ) {
   vector < vector< myreal > > local_sketches;
   vector < myreal > empty_sketch;
@@ -612,7 +613,7 @@ compute_uniform_oracles_online_step(
 
   //get the lock first
   pthread_mutex_lock( &mutex1 );
-
+  offset += offset_in;
   // merge local_sketches in instance i
   // into the global sketch for each node
   vector< myreal > new_sketch;
