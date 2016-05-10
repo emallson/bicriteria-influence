@@ -1005,12 +1005,13 @@ myint forwardBFS( igraph_t* G_i,
 }
 
 double kempe_greedy_max( igraph_t& G, 
-		     vector< myreal >& IC,
-		     unsigned L, //number of samples
-		     unsigned kk //number of seed nodes
+			 vector< myreal >& IC,
+			 vector< myint >& seed_set,
+			 unsigned L, //number of samples
+			 unsigned kk //number of seed nodes
 		     ) {
   double eact = 0;
-  vector< myint > seed_set;
+  seed_set.clear();
   seed_set.reserve( kk );
   double max_marge;
   vector< myint > v_reach;
@@ -1050,4 +1051,5 @@ double kempe_greedy_max( igraph_t& G,
     eact += max_marge;
   }
 
+  return eact;
 }
