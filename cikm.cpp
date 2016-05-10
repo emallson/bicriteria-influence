@@ -3,14 +3,17 @@
 #include <vector>
 #include <iostream>
 #include <random>
+#include <chrono>
 #include <fstream>
 #include <cstdio>
 #include <cmath>
 #include <sstream>
 #include <ctime>
 #include <pthread.h>
+#include <boost/program_options.hpp>
 
 using namespace std;
+namespace po = boost::program_options;
 
 //global random number generator
 std::random_device rd;
@@ -20,7 +23,7 @@ std::mt19937 gen(rd());
 
 igraph_t base_graph;
 string graph_filename;
-myint n;
+myint n, m;
 myreal beta;
 myreal alpha;
 myreal int_maxprob;
@@ -33,61 +36,67 @@ influence_oracles my_oracles( 0, 0, 0 );
 
 //function prototypes
 void construct_independent_cascade( igraph_t& G, vector< myreal >& edge_weights,
-				    myreal int_maxprob);
+                                    myreal int_maxprob);
 void construct_external_influence( igraph_t& G, vector< myreal >& node_probs, myreal max_prob );
-myreal construct_reachability_instance( igraph_t& G, 
-				      vector< igraph_t* >& vgraphs,
-				      vector< myreal >& IC, //IC weights
-				      vector< myreal >& NP, //Node probabilities
-				      myint ell );
-void sample_independent_cascade( igraph_t& G, 
-				 vector< myreal >& edgne_weights, 
-				 igraph_t& sample_graph );
+myreal construct_reachability_instance( igraph_t& G,
+                                        vector< igraph_t* >& vgraphs,
+                                        vector< myreal >& IC, //IC weights
+                                        vector< myreal >& NP, //Node probabilities
+                                        myint ell );
+void sample_independent_cascade( igraph_t& G,
+                                 vector< myreal >& edgne_weights,
+                                 igraph_t& sample_graph );
 
-void sample_external_influence( igraph_t& G, 
-				vector< myreal >& node_probs, 
-				vector< myint >& nodes_sampled );
+void sample_external_influence( igraph_t& G,
+                                vector< myreal >& node_probs,
+                                vector< myint >& nodes_sampled );
 
 myint forwardBFS( igraph_t* G_i, vector< myint >& vseeds, vector< myint >& v_neighborhood );
-myint forwardBFS( igraph_t* G_i, 
-		  vector< myint >& vseeds, 
-		  vector< myint >& vseeds2,
-		  vector< myint >& v_neighborhood,
-		  int max_distance );
+myint forwardBFS( igraph_t* G_i,
+                  vector< myint >& vseeds,
+                  vector< myint >& vseeds2,
+                  vector< myint >& v_neighborhood,
+                  int max_distance );
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
-	       vector< myint >& res_sk, 
+               vector< myint >& res_sk,
                myint k );
 void my_merge( vector< myreal >& sk1, vector< myreal >& sk2,
-	       vector< myreal >& res_sk, 
+               vector< myreal >& res_sk,
                myint k );
 
 void* compute_oracles_online( void * );
 
 void print_sketch( vector< myreal >& sk1 );
 
-void bicriteria( influence_oracles& oracles, 
-                 myint n, 
+void bicriteria( influence_oracles& oracles,
+                 myint n,
                  myint T,
                  myreal offset,
-		 //out parameters
-		 vector< myint >& seeds);
+                 //out parameters
+                 vector< myint >& seeds);
 
 void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
-	       vector< myint >& res_sk, 
-		myint k );
+                vector< myint >& res_sk,
+                myint k );
+double kempe_greedy_max( igraph_t& G,
+                         vector< myreal >& IC,
+                         vector< myint >& seed_set,
+                         unsigned L, //number of samples
+                         unsigned kk //number of seed nodes
+  );
 
 void read_params(
-		 bool& bdir,
-		 myint& n,
-		 unsigned& nthreads,
-		 string& graph_filename,
-		 myreal& beta,
-		 myreal& alpha,
-		 myreal& int_maxprob,
-		 myreal& ext_maxprob,
-		 string& output_filename,
-		 istream& is
-		  ) {
+  bool& bdir,
+  myint& n,
+  unsigned& nthreads,
+  string& graph_filename,
+  myreal& beta,
+  myreal& alpha,
+  myreal& int_maxprob,
+  myreal& ext_maxprob,
+  string& output_filename,
+  istream& is
+  ) {
   is >> graph_filename;
   if (graph_filename == "ER") {
     is >> n;
@@ -109,19 +118,19 @@ void read_params(
 }
 
 myreal actual_influence(
-			vector< myint >& seed_set,
-			igraph_t& base_graph,
-			vector< myreal >& IC,
-			vector< myreal >& NP,
-			unsigned L ) {
+  vector< myint >& seed_set,
+  igraph_t& base_graph,
+  vector< myreal >& IC,
+  vector< myreal >& NP,
+  unsigned L ) {
   myreal activated = 0.0;
 
   for (unsigned i = 0; i < L; ++i) {
     if (i % 1 == 0) {
       cout << "\r                                     \r"
-    	   << ((myreal) i )/ L * 100 
-    	//	   << i
-    	   << "\% done";
+           << ((myreal) i )/ L * 100
+        //	   << i
+           << "\% done";
       cout.flush();
     }
 
@@ -129,14 +138,14 @@ myreal actual_influence(
     sample_independent_cascade( base_graph, IC, G_i );
     vector< myint > ext_act;
     sample_external_influence( base_graph, NP, ext_act );
-    
+
     vector< myint > v_reach;
     forwardBFS( &G_i,
-		ext_act,
-		seed_set,
-		v_reach,
-		igraph_vcount( &G_i ) );
-		
+                ext_act,
+                seed_set,
+                v_reach,
+                igraph_vcount( &G_i ) );
+
     activated += v_reach.size();
     //    cout << ext_act.size() + seed_set.size() << ' ' << v_reach.size() << endl;
 
@@ -151,77 +160,57 @@ myreal actual_influence(
 
 
 int main(int argc, char** argv) {
-  if (argc < 2) {
-    cerr << "Usage: " << argv[0] << " <input filename>\n";
-    cerr << "or usage: "
-	 << argv[0]
-	 << " <graph filename>"
-	 << " <beta>"
-	 << " <alpha>"
-	 << " <int_maxprob>"
-	 << " <ext_maxprob>"
-	 << " <output filename>"
-      	 << " <nthreads>"
-	 << " <is_directed>\n";
+  unsigned int L, k;
+  po::options_description opts("Kempe Simulation for CIKM'16");
+  opts.add_options()
+    ("help", "Show this help")
+    ("graph,g", po::value<string>(&graph_filename)->required()->value_name("GRAPH.txt"),
+      "The graph topology to load. This should be in the 2-3 data format.")
+    ("samples,L", po::value<unsigned int>(&L)->required(),
+      "The number of samples to generate in Monte-Carlo.")
+    ("seeds,k", po::value<unsigned int>(&k)->required(),
+      "The number of nodes in the seed set.")
+    ;
+
+  po::positional_options_description popts;
+  popts.add("graph", 1);
+  popts.add("samples", 1);
+  popts.add("seeds", 1);
+
+  po::variables_map args;
+  po::store(po::command_line_parser(argc, argv)
+            .options(opts).positional(popts).run(), args);
+
+  if(args.count("help")) {
+    cerr << opts << endl;
     return 1;
   }
 
-  ifstream ifile;
-  istringstream iss;
+  try {
+    po::notify(args);
+  } catch(po::required_option e) {
+    cerr << "Error: " << e.get_option_name() << " required but not provided." << endl;
+    cerr << opts << endl;
+    return -1;
+  }
 
   unsigned nthreads;
   bool bdir;
 
-  if (argc > 2) {
-    //read parameters from command line
-    string str_params;
-    for (unsigned i = 1; i < argc; ++i) {
-      str_params = str_params + " " + argv[i];
-    }
-    iss.str( str_params );
+  ifstream file(graph_filename, fstream::in);
+  file >> n >> m;
 
-    read_params( bdir, 
-		n, nthreads, graph_filename,
-		 beta,
-		 alpha,
-		 int_maxprob,
-		 ext_maxprob,
-		 output_filename,
-		 iss );
-  } else {
-    
-    if (argc == 2) {
-      //read parameters from input file
-      string str_ifile( argv[1] );
-      ifile.open( str_ifile.c_str() );
-
-      read_params( bdir, 
-		   n, nthreads, graph_filename,
-		   beta,
-		   alpha,
-		   int_maxprob,
-		   ext_maxprob,
-		   output_filename,
-		   ifile );
-
-    }
-
+  IC_weights.reserve(m);
+  igraph_vector_t edgelist;
+  igraph_vector_init(&edgelist, m * 2);
+  long u, v;
+  for(long i = 0; i < m; i++) {
+    file >> u >> v >> IC_weights[i];
+    VECTOR(edgelist)[2 * i] = u;
+    VECTOR(edgelist)[2 * i + 1] = v;
   }
-  
-  if (graph_filename == "ER") {
-    igraph_erdos_renyi_game(&base_graph, 
-			    IGRAPH_ERDOS_RENYI_GNP, 
-			    n, 2.0 / n,
-			    IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
-  } else {
-
-    //    ifstream ifile( bg_filename.c_str());
-    FILE* fp;
-    fp = fopen( graph_filename.c_str(), "r" );
-    //if the graph is undirected
-    igraph_read_graph_edgelist( &base_graph, fp, 0, bdir ); 
-    fclose( fp );
-  }
+  igraph_t base_graph;
+  igraph_create(&base_graph, &edgelist, n, 1);
 
   n = igraph_vcount( &base_graph );
 
@@ -232,138 +221,30 @@ int main(int argc, char** argv) {
     cout << "is directed.";
   else
     cout << "is undirected.";
-      
+
   cout << endl;
 
-  
+
   cout << "n = " << n << endl;
   cout << "m = " << igraph_ecount( &base_graph ) << endl;
-  myint T;
-  T = beta * n;
-  myint C = 2;
-  myint K = 1.0 / (C * alpha);
-  myreal delta = 0.5;
-  ell = log( 2 / delta ) / (alpha * alpha) / 2;
-  myint k_cohen = ell / 3.0;//25 * (myint)( log ( ((double) n) ) );//ell / 2.0;//25 * ;//ell;//((double) ell);//25 * 
-  ell = ell / 3.0;
 
-  myreal epsilon = alpha * n;
-  cout << "epsilon = " << epsilon << endl;
-  cout << "k_cohen = " << k_cohen << endl;
-  cout << "T = " << T << endl;
-  cout << "alpha = " << alpha << endl;
-  cout << "beta = " << beta << endl;
-  cout << "ell = " << ell << endl;
-  cout << "K = " << K << endl;
-  cout << "int_maxprob = " << int_maxprob << endl;
-  cout << "ext_maxprob = " << ext_maxprob << endl;
-
-  cout << "Minimum memory required: " 
-       << k_cohen << 'x'
-       << sizeof( myreal ) << 'x'
-       << n << " = " << k_cohen * sizeof( myreal ) * n / 1000000.0 
-       << " MB" << endl;
-    
-
-  system("sleep 2");
-
-  cout << "Constructing the IC model..." << endl;
-
-  construct_independent_cascade( base_graph, IC_weights, int_maxprob );
-
-  //this is a simple model of external influence
-  cout << "Constructing external influence..." << endl;
-  construct_external_influence( base_graph, node_probs, ext_maxprob );
-
-  cerr << "Computing oracles online...\n";
-
-  //  vector< igraph_t* > v_graphs; // the ell graphs
-  
-  // double offset = construct_reachability_instance( 
-  //                                  base_graph, 
-  //       			   v_graphs, 
-  //       			   IC_weights,
-  //       			   node_probs,
-  //       			   ell );
-
-  clock_t t_start = clock();
-  //create the oracles
-  my_oracles.n = n;
-  my_oracles.ell = ell;
-  my_oracles.k = k_cohen;
-  my_oracles.compute_uniform_oracles_online_init();
-
-  myint ell_tmp = ((double) ell) / nthreads;
-
-
-  pthread_t* mythreads = new pthread_t[ nthreads ];
-  for (unsigned i = 0; i < nthreads; ++i) {
-    pthread_create( &( mythreads[i] ), NULL, compute_oracles_online, &ell_tmp );
-    
-  }
-
-  for (unsigned i = 0; i < nthreads; ++i) {
-    pthread_join( mythreads[i] , NULL );
-    
-  }
-
-  delete [] mythreads;
-
-  clock_t t_finish = clock();
-  myreal t_oracle = myreal ( t_finish - t_start ) / CLOCKS_PER_SEC;
-
-  //  print_sketch( my_oracles.uniform_global_sketches[0] );
-  
-  system("sleep 1");
-
-  // cerr << "computing oracles...\n";
-
-  // my_oracles.alt_compute_oracles();
-
-  // cerr << "done" << endl;
-
-  // cout << "avg reachability and estimates: ";
-  // for (myint i = 0; i < n; ++i) {
-  //   cout << i << ' ' << my_oracles.average_reachability( i ) << ' ' << my_oracles.estimate_reachability( i ) << endl;
-  // }
-
-  //run the bicriteria alg.
-  t_start = clock();
   vector< myint > seed_set;
 
-  myreal offset = my_oracles.offset / my_oracles.ell;
-  bicriteria( my_oracles, n, T, offset,
-	      seed_set );
+  auto start_time = std::chrono::system_clock::now();
+  kempe_greedy_max(base_graph, IC_weights, seed_set, L, k);
+  auto end_time = std::chrono::system_clock::now();
 
-  t_finish = clock();
-  myreal t_bicriteria = myreal (t_finish - t_start) / CLOCKS_PER_SEC;
-  myreal t_total = t_oracle + t_bicriteria;
   cout << "Size of seed set: " << seed_set.size() << endl;
-  cout << "Finished in: " << t_total << " seconds" << endl;
+  cout << "Finished in: " << (end_time - start_time).count() << " seconds" << endl;
   //compute "actual" influence of seed set
-  cout << "Estimating influence of seed set by Monte Carlo..." << endl;
-  myreal act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, 1000U );
-
+  cout << "Estimated Influence: ";
+  node_probs = vector< myreal >(n, 0.0); // no external influence
+  myreal act_infl = actual_influence( seed_set, base_graph, IC_weights, node_probs, L );
   cout << act_infl << endl;
-  igraph_destroy( &base_graph);
 
-  ofstream ofile( output_filename.c_str(), 
-		     ofstream::app );
-  ofile << n << ' '
-	<< beta << ' '
-	<< T << ' '
-	<< alpha << ' '
-	<< epsilon << ' '
-	<< ell << ' '
-	<< k_cohen << ' '
-	<< int_maxprob << ' '
-	<< ext_maxprob << ' '
-	<< offset << ' '
-	<< seed_set.size() << ' '
-	<< act_infl << ' ' 
-	<< t_total << endl;
+  igraph_destroy(&base_graph);
+  igraph_vector_destroy(&edgelist);
 
-  ofile.close();
   return 0;
 }
 
@@ -383,12 +264,12 @@ void print_sketch( vector< myreal >& sk1 ) {
   cout << endl;
 }
 
-void bicriteria( influence_oracles& oracles, 
-                 myint n, 
+void bicriteria( influence_oracles& oracles,
+                 myint n,
                  myint T,
                  myreal offset,
-		 //out parameters
-		 vector< myint >& seeds) {
+                 //out parameters
+                 vector< myint >& seeds) {
   cerr << "offset = " << offset << endl;
 
   //  vector< myint > sketch;
@@ -412,11 +293,11 @@ void bicriteria( influence_oracles& oracles,
     for (myint u = 0; u < n; ++u) {
       //tmp_sketch = merge( sketch, sketch_u )
       my_merge( sketch, oracles.uniform_global_sketches[ u ], tmp_sketch, oracles.k );
-      
+
       myreal tmp_marg = oracles.estimate_reachability_uniform_sketch( tmp_sketch ) - curr_tau;
       if (tmp_marg > max_marg) {
-	max_marg = tmp_marg;
-	next_node = u;
+        max_marg = tmp_marg;
+        next_node = u;
       }
     }
 
@@ -435,11 +316,11 @@ void bicriteria( influence_oracles& oracles,
 }
 
 void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
-	       vector< myint >& res_sk, 
-               myint k ) {
+                vector< myint >& res_sk,
+                myint k ) {
   //this is not really a merge, seems to be what cohen is saying
   //in the 1997 paper. Rather is coordinate-wise min.
-  
+
   vector< myint >::iterator it1 = sk1.begin();
   vector< myint >::iterator it2 = sk2.begin();
 
@@ -457,29 +338,29 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
     //add the smallest of coordinates
     if (it1 != sk1.end()) {
       if (it2 != sk2.end()) {
-	if ( (*it1) < (*it2) ) {
-	  (*res_it) = (*it1);
-	  ++it1;
-	  ++it2;
-	} else {
-	  if ( (*it1) > (*it2) ) {
-	    (*res_it) = (*it2);
-	    ++it2;
-	    ++it1;
-	  } else {
-	    //the values are equal
-	    //but we can only have
-	    //an element appear once
-	    //so insert it, and increment both
-	    (*res_it) = (*it1);
-	    ++it1;
-	    ++it2;
-	  }
-	}
+        if ( (*it1) < (*it2) ) {
+          (*res_it) = (*it1);
+          ++it1;
+          ++it2;
+        } else {
+          if ( (*it1) > (*it2) ) {
+            (*res_it) = (*it2);
+            ++it2;
+            ++it1;
+          } else {
+            //the values are equal
+            //but we can only have
+            //an element appear once
+            //so insert it, and increment both
+            (*res_it) = (*it1);
+            ++it1;
+            ++it2;
+          }
+        }
       } else { //we're done with sketch2.
-	//just add from sk1
-	(*res_it) = (*it1);
-	++it1;
+        //just add from sk1
+        (*res_it) = (*it1);
+        ++it1;
       }
     } else {
       //done with sk1,
@@ -495,7 +376,7 @@ void my_merge2( vector< myint >& sk1, vector< myint >& sk2,
 }
 
 void my_merge( vector< myint >& sk1, vector< myint >& sk2,
-	       vector< myint >& res_sk, 
+               vector< myint >& res_sk,
                myint k ) {
   //	       , vector< myint >& seeds ) {
 
@@ -516,27 +397,27 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
     //add the smallest next one
     if (it1 != sk1.end()) {
       if (it2 != sk2.end()) {
-	if ( (*it1) < (*it2) ) {
-	  (*res_it) = (*it1);
-	  ++it1;
-	} else {
-	  if ( (*it1) > (*it2) ) {
-	    (*res_it) = (*it2);
-	    ++it2;
-	  } else {
-	    //the values are equal
-	    //but we can only have
-	    //an element appear once
-	    //so insert it, and increment both
-	    (*res_it) = (*it1);
-	    ++it1;
-	    ++it2;
-	  }
-	}
+        if ( (*it1) < (*it2) ) {
+          (*res_it) = (*it1);
+          ++it1;
+        } else {
+          if ( (*it1) > (*it2) ) {
+            (*res_it) = (*it2);
+            ++it2;
+          } else {
+            //the values are equal
+            //but we can only have
+            //an element appear once
+            //so insert it, and increment both
+            (*res_it) = (*it1);
+            ++it1;
+            ++it2;
+          }
+        }
       } else { //we're done with sketch2.
-	//just add from sk1
-	(*res_it) = (*it1);
-	++it1;
+        //just add from sk1
+        (*res_it) = (*it1);
+        ++it1;
       }
     } else {
       //done with sk1,
@@ -552,7 +433,7 @@ void my_merge( vector< myint >& sk1, vector< myint >& sk2,
 
 }
 void my_merge( vector< myreal >& sk1, vector< myreal >& sk2,
-	       vector< myreal >& res_sk, 
+               vector< myreal >& res_sk,
                myint k ) {
   //	       , vector< myint >& seeds ) {
 
@@ -573,27 +454,27 @@ void my_merge( vector< myreal >& sk1, vector< myreal >& sk2,
     //add the smallest next one
     if (it1 != sk1.end()) {
       if (it2 != sk2.end()) {
-	if ( (*it1) < (*it2) ) {
-	  (*res_it) = (*it1);
-	  ++it1;
-	} else {
-	  if ( (*it1) > (*it2) ) {
-	    (*res_it) = (*it2);
-	    ++it2;
-	  } else {
-	    //the values are equal
-	    //but we can only have
-	    //an element appear once
-	    //so insert it, and increment both
-	    (*res_it) = (*it1);
-	    ++it1;
-	    ++it2;
-	  }
-	}
+        if ( (*it1) < (*it2) ) {
+          (*res_it) = (*it1);
+          ++it1;
+        } else {
+          if ( (*it1) > (*it2) ) {
+            (*res_it) = (*it2);
+            ++it2;
+          } else {
+            //the values are equal
+            //but we can only have
+            //an element appear once
+            //so insert it, and increment both
+            (*res_it) = (*it1);
+            ++it1;
+            ++it2;
+          }
+        }
       } else { //we're done with sketch2.
-	//just add from sk1
-	(*res_it) = (*it1);
-	++it1;
+        //just add from sk1
+        (*res_it) = (*it1);
+        ++it1;
       }
     } else {
       //done with sk1,
@@ -625,13 +506,13 @@ void *compute_oracles_online( void* ptr ) {
   for (myint i = 0; i < N; ++i) {
     if (i % 1 == 0) {
       cout << "\r                                     \r"
-	   << ((myreal) i )/ N * 100 
-	//	   << i
-	   << "\% done";
+           << ((myreal) i )/ N * 100
+        //	   << i
+           << "\% done";
       cout.flush();
     }
 
-    igraph_t G_i; 
+    igraph_t G_i;
 
     sample_independent_cascade( G, IC, G_i );
     //G_i now has an IC instance. Let's select the
@@ -640,7 +521,7 @@ void *compute_oracles_online( void* ptr ) {
     //need to initialize ext_act
     sample_external_influence( G, NP, ext_act );
     //remove the reachable set in G_i, of the externally activated set.
-    //actually, what we want is to remove all 
+    //actually, what we want is to remove all
     //edges incident to reachable
     //set.
     vector< myint > v_reach;
@@ -653,7 +534,7 @@ void *compute_oracles_online( void* ptr ) {
     forwardBFS( &G_i, ext_act, v_reach );
 
     offset = v_reach.size();
-  
+
     for (myint iii = 0; iii < v_reach.size(); ++iii) {
       igraph_incident( &G_i, &v_tmp, v_reach[iii], IGRAPH_ALL );
 
@@ -668,10 +549,10 @@ void *compute_oracles_online( void* ptr ) {
     igraph_es_destroy( &es );
     igraph_vector_destroy( &v_edges_to_remove );
 
-    //All edges incident to the reachable 
+    //All edges incident to the reachable
     //set have been removed
     //That is, H_i has been created
-    
+
     //use it for the oracle computation,
     //but do then discard it
 
@@ -686,11 +567,11 @@ void *compute_oracles_online( void* ptr ) {
 }
 
 
-myreal construct_reachability_instance( igraph_t& G, 
-				      vector< igraph_t* >& vgraphs,
-				      vector< myreal >& IC, //IC weights
-				      vector< myreal >& NP, //Node probabilities
-				      myint ell ) {
+myreal construct_reachability_instance( igraph_t& G,
+                                        vector< igraph_t* >& vgraphs,
+                                        vector< myreal >& IC, //IC weights
+                                        vector< myreal >& NP, //Node probabilities
+                                        myint ell ) {
   //create a gen. reachability instance
   vgraphs.clear();
 
@@ -699,12 +580,12 @@ myreal construct_reachability_instance( igraph_t& G,
   for (myint i = 0; i < ell; ++i) {
     if (i % 1 == 0) {
       cerr << "\r                                     \r"
-	   << ((myreal) i )/ ell * 100 
-	//	   << i
-	   << "\% done";
+           << ((myreal) i )/ ell * 100
+        //	   << i
+           << "\% done";
     }
 
-    igraph_t* G_i = new igraph_t; //want a new address in memory each iteration    
+    igraph_t* G_i = new igraph_t; //want a new address in memory each iteration
 
     sample_independent_cascade( G, IC, *G_i );
     //G_i now has an IC instance. Let's select the
@@ -746,7 +627,7 @@ myreal construct_reachability_instance( igraph_t& G,
     igraph_vector_destroy( &v_edges_to_remove );
 
     //    cerr << "BFS done\n";
-    //All edges incident to the reachable set 
+    //All edges incident to the reachable set
     //have been removed
     //That is, H_i has been created
     vgraphs.push_back( G_i );
@@ -772,7 +653,7 @@ int test_estimation()
 
   for (myint i = 0; i < ell; ++i) {
     igraph_erdos_renyi_game(&(vgraphs[i]), IGRAPH_ERDOS_RENYI_GNP, n, 1.0/ n,
-			  IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+                            IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
   }
 
   influence_oracles my_oracles( vgraphs, ell, (myint) 10, n );
@@ -817,7 +698,7 @@ void construct_external_influence( igraph_t& G, vector< myreal >& node_probs, my
 }
 
 void sample_independent_cascade( igraph_t& G, vector< myreal >& edge_weights, igraph_t& sample_graph ) {
-  
+
   igraph_copy( &sample_graph, &G );
 
   std::uniform_real_distribution<> dis(0, 1);
@@ -848,13 +729,13 @@ void sample_independent_cascade( igraph_t& G, vector< myreal >& edge_weights, ig
 
   igraph_es_destroy( &es );
   igraph_vector_destroy( &edges_to_delete );
-  
+
 }
 
-void sample_external_influence( igraph_t& G, 
-				vector< myreal >& node_probs, 
-				vector< myint >& nodes_sampled ) {
-  
+void sample_external_influence( igraph_t& G,
+                                vector< myreal >& node_probs,
+                                vector< myint >& nodes_sampled ) {
+
 
   std::uniform_real_distribution<> dis(0, 1);
 
@@ -871,14 +752,14 @@ void sample_external_influence( igraph_t& G,
       //sample this node i
       //igraph_vector_push_back( &nodes_sampled, i );
       nodes_sampled.push_back( i );
-    } 
+    }
   }
 
 }
 
-myint forwardBFS( igraph_t* G_i, 
-		  vector< myint >& vseeds, 
-		  vector< myint >& v_neighborhood ) {
+myint forwardBFS( igraph_t* G_i,
+                  vector< myint >& vseeds,
+                  vector< myint >& v_neighborhood ) {
   queue <myint> Q;
   vector < int > dist;
   myint n = igraph_vcount( G_i );
@@ -908,14 +789,14 @@ myint forwardBFS( igraph_t* G_i,
     for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
       myint aneigh = VECTOR( neis )[i];
       if (dist[ aneigh ] == -1 ) { //if aneigh hasn't been discovered yet
-	dist[ aneigh ] = dist[ current ] + 1;
-	Q.push( aneigh );
-	//	igraph_vector_push_back( &v_neighborhood, aneigh );
-	v_neighborhood.push_back( aneigh );
+        dist[ aneigh ] = dist[ current ] + 1;
+        Q.push( aneigh );
+        //	igraph_vector_push_back( &v_neighborhood, aneigh );
+        v_neighborhood.push_back( aneigh );
 
-	//flag this edge for removal from the graph
-	//	myint eid;
-	//	igraph_get_eid( G_i, &eid, current, 
+        //flag this edge for removal from the graph
+        //	myint eid;
+        //	igraph_get_eid( G_i, &eid, current,
       }
     }
 
@@ -934,11 +815,11 @@ myint forwardBFS( igraph_t* G_i,
 
 }
 
-myint forwardBFS( igraph_t* G_i, 
-		  vector< myint >& vseeds, 
-		  vector< myint >& vseeds2,
-		  vector< myint >& v_neighborhood,
-		  int max_distance ) {
+myint forwardBFS( igraph_t* G_i,
+                  vector< myint >& vseeds,
+                  vector< myint >& vseeds2,
+                  vector< myint >& v_neighborhood,
+                  int max_distance ) {
   queue <myint> Q;
   vector < int > dist;
   myint n = igraph_vcount( G_i );
@@ -976,14 +857,14 @@ myint forwardBFS( igraph_t* G_i,
     for (myint i = 0; i < igraph_vector_size( &neis ); ++i) {
       myint aneigh = VECTOR( neis )[i];
       if (dist[ aneigh ] == -1 ) { //if aneigh hasn't been discovered yet
-	dist[ aneigh ] = dist[ current ] + 1;
-	Q.push( aneigh );
-	//	igraph_vector_push_back( &v_neighborhood, aneigh );
-	v_neighborhood.push_back( aneigh );
+        dist[ aneigh ] = dist[ current ] + 1;
+        Q.push( aneigh );
+        //	igraph_vector_push_back( &v_neighborhood, aneigh );
+        v_neighborhood.push_back( aneigh );
 
-	//flag this edge for removal from the graph
-	//	myint eid;
-	//	igraph_get_eid( G_i, &eid, current, 
+        //flag this edge for removal from the graph
+        //	myint eid;
+        //	igraph_get_eid( G_i, &eid, current,
       }
     }
 
@@ -994,8 +875,8 @@ myint forwardBFS( igraph_t* G_i,
   for (myint i = 0; i < n; ++i) {
     if (dist[i] != -1) {
       if (dist[i] <= max_distance) {
-	//i is reachable from vertex in G_i
-	++count;
+        //i is reachable from vertex in G_i
+        ++count;
       }
     }
   }
@@ -1004,12 +885,12 @@ myint forwardBFS( igraph_t* G_i,
 
 }
 
-double kempe_greedy_max( igraph_t& G, 
-			 vector< myreal >& IC,
-			 vector< myint >& seed_set,
-			 unsigned L, //number of samples
-			 unsigned kk //number of seed nodes
-		     ) {
+double kempe_greedy_max( igraph_t& G,
+                         vector< myreal >& IC,
+                         vector< myint >& seed_set,
+                         unsigned L, //number of samples
+                         unsigned kk //number of seed nodes
+  ) {
   double eact = 0;
   seed_set.clear();
   seed_set.reserve( kk );
@@ -1020,6 +901,7 @@ double kempe_greedy_max( igraph_t& G,
 
   for (unsigned iter = 0; iter < kk; ++iter) {
 
+    cerr << "Selecting seed node " << iter << endl;
     seed_set.push_back( 0 ); // we're going to be adding a new
     //seed node, identity to be determined
     myint next_node = 0;
@@ -1029,20 +911,20 @@ double kempe_greedy_max( igraph_t& G,
 
       double tmp_eact = 0.0;
       for (unsigned j = 0; j < L; ++j) {
-	v_reach.clear();
-	G_i = new igraph_t;
-	sample_independent_cascade(G, IC, *G_i );
-	seed_set[ iter ] = i; // test the ith seed node
-	forwardBFS( G_i, seed_set, v_reach );
-	tmp_eact += v_reach.size();
-	igraph_destroy( G_i );
+        v_reach.clear();
+        G_i = new igraph_t;
+        sample_independent_cascade(G, IC, *G_i );
+        seed_set[ iter ] = i; // test the ith seed node
+        forwardBFS( G_i, seed_set, v_reach );
+        tmp_eact += v_reach.size();
+        igraph_destroy( G_i );
       }
 
       tmp_eact /= L;
       double marge_i = tmp_eact - eact;
       if (marge_i > max_marge) {
-	max_marge = marge_i;
-	next_node = i;
+        max_marge = marge_i;
+        next_node = i;
       }
     }
 
