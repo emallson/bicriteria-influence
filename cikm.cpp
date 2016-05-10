@@ -194,6 +194,7 @@ int main(int argc, char** argv) {
   kempe_greedy_max(base_graph, IC_weights, seed_set, L, k);
   end_time = std::chrono::system_clock::now();
 
+  cout << "Seed set: ";
   for(int i = 0; i < k; i++) {
     cout << seed_set[i] << " ";
   }
@@ -201,9 +202,13 @@ int main(int argc, char** argv) {
   cout << "Size of seed set: " << seed_set.size() << endl;
   cout << "Finished in: " << (end_time - start_time).count() << " seconds" << endl;
   //compute "actual" influence of seed set
-  cout << "Estimated Influence: ";
-  myreal act_infl = actual_influence( seed_set, base_graph, IC_weights, L );
-  cout << act_infl << endl;
+  cout << "Estimated Influences: ";
+  for(int i = 1; i <= k; i++) {
+    vector< myint > subseed(seed_set.begin(), seed_set.begin()+i);
+    myreal act_infl = actual_influence( subseed, base_graph, IC_weights, L );
+    cout << act_infl << " ";
+  }
+  cout << endl;
 
   igraph_destroy(&base_graph);
   igraph_vector_destroy(&edgelist);
