@@ -1003,3 +1003,51 @@ myint forwardBFS( igraph_t* G_i,
   return count;
 
 }
+
+double kempe_greedy_max( igraph_t& G, 
+		     vector< myreal >& IC,
+		     unsigned L, //number of samples
+		     unsigned kk //number of seed nodes
+		     ) {
+  double eact = 0;
+  vector< myint > seed_set;
+  seed_set.reserve( kk );
+  double max_marge;
+  vector< myint > v_reach;
+
+  igraph_t* G_i;
+
+  for (unsigned iter = 0; iter < kk; ++iter) {
+
+    seed_set.push_back( 0 ); // we're going to be adding a new
+    //seed node, identity to be determined
+    myint next_node = 0;
+    max_marge = 0.0;
+    //try all nodes
+    for (unsigned i = 0; i < n; ++i) {
+
+      double tmp_eact = 0.0;
+      for (unsigned j = 0; j < L; ++j) {
+	v_reach.clear();
+	G_i = new igraph_t;
+	sample_independent_cascade(G, IC, *G_i );
+	seed_set[ iter ] = i; // test the ith seed node
+	forwardBFS( G_i, seed_set, v_reach );
+	tmp_eact += v_reach.size();
+	igraph_destroy( G_i );
+      }
+
+      tmp_eact /= L;
+      double marge_i = tmp_eact - eact;
+      if (marge_i > max_marge) {
+	max_marge = marge_i;
+	next_node = i;
+      }
+    }
+
+    //we've found node with max marginal gain
+    seed_set[iter] = next_node;
+    eact += max_marge;
+  }
+
+}
